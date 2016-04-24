@@ -1,0 +1,29 @@
+{{define "error"}}
+<div class="panel panel-default">
+	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
+		<h4 class="panel-title">
+		{{if .RateLimited}}
+			Rate Limited
+		{{end}}
+		{{if not .RateLimited}}
+			{{if eq .RPCStatus "Running"}}Temporary{{end}} Error
+		{{end}}</h4>
+	</div>
+	<div class="panel-body" style="background-color: #333; color: #ffffff;">
+			<div class="alert alert-danger"><span id="error_1_txt">We could not process your request</span></div>
+			{{if .RateLimited}}
+				<p><span id="error_2_txt">Your request has been rate limited to lighten the load on the servers.</span>
+				{{if .Referer}}<a href="{{ .Referer }}">{{end}}<span id="error_3_txt">Please re-try your request.</span>{{if .Referer}}</a>{{end}}</p>
+			{{end}}
+			{{if not .RateLimited}}
+				{{if eq .RPCStatus "Running"}}
+					<p><span id="error_4_txt">A temporary error occurred. This can happen due to RPC results being temporarily out of sync.</span>
+					{{if .Referer}}<a href="{{ .Referer }}">{{end}}<span id="error_5_txt">Please re-try your request.</span>{{if .Referer}}</a>{{end}}</p>
+				{{end}}
+				{{if eq .RPCStatus "Stopped"}}
+					<p><span id="error_6_txt">Stakepool is currently not processing RPC commands so most functionality of the web interface will not work until connections to the RPC server is restored.  <b>Wallets are still online and voting.</b></span></p>
+				{{end}}
+			{{end}}
+	</div>
+</div>
+{{end}}
