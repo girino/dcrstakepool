@@ -31,23 +31,27 @@
 </div>
 <div class="panel panel-default">
 	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
-		<h4 class="panel-title" id="raw_stats_txt">Raw Stats</h4>
+		<h4 class="panel-title" id="raw_stats_txt">Stats &amp; Status</h4>
 	</div>
 	<div class="panel-body" style="background-color: #333; color: #ffffff;">
 	<table class="table table-condensed" id="rawstats">
-                <tr><td><span style="font-size: larger;" id="Immature_txt">Immature:</span></td><td><span id="Immature">{{ .StakeInfo.Immature }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="Live_txt">Live:</span></td><td><span id="Live">{{ .StakeInfo.Live }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="Voted_txt">Voted:</span></td><td><span id="Voted">{{ .StakeInfo.Voted }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="Missed_txt">Missed:</span></td><td><span id="Missed">{{ .StakeInfo.Missed }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="Revoked_txt">Revoked:</span></td><td><span id="Revoked">{{ .StakeInfo.Revoked }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="ProportionMissed_txt">ProportionMissed:</span></td><td><span id="ProportionMissed">{{ .StakeInfo.ProportionMissed }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="PoolSize_txt">Pool Size:</span></td><td><span id="PoolSize">{{ .StakeInfo.PoolSize }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="AllMempoolTix_txt">AllMempoolTix:</span></td><td><span id="AllMempoolTix">{{ .StakeInfo.AllMempoolTix }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="OwnMempoolTix_txt">OwnMempoolTix:</span></td><td><span id="OwnMempoolTix">{{ .StakeInfo.OwnMempoolTix }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="ProportionLive_txt">ProportionLive:</span></td><td><span id="ProportionLive">{{ .StakeInfo.ProportionLive }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="Difficulty_txt">Difficulty:</span></td><td><span id="Difficulty">{{ .StakeInfo.Difficulty }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="TotalSubsidy_txt">TotalSubsidy:</span></td><td><span id="TotalSubsidy">{{ .StakeInfo.TotalSubsidy }}</span></td></tr>
-                <tr><td><span style="font-size: larger;" id="UserCount_txt">User Count:</span></td><td><span id="UserCount">{{ .UserCount }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="Immature_txt">Immature:</span></td><td><span id="Immature">{{ .StakeInfo.Immature }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="Live_txt">Live:</span></td><td><span id="Live">{{ .StakeInfo.Live }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="Voted_txt">Voted:</span></td><td><span id="Voted">{{ .StakeInfo.Voted }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="Missed_txt">Missed:</span></td><td><span id="Missed">{{ .StakeInfo.Missed }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="Revoked_txt">Revoked:</span></td><td><span id="Revoked">{{ .StakeInfo.Revoked }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="ProportionMissed_txt">ProportionMissed:</span></td><td><span id="ProportionMissed">{{ .StakeInfo.ProportionMissed }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="PoolSize_txt">Pool Size:</span></td><td><span id="PoolSize">{{ .StakeInfo.PoolSize }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="AllMempoolTix_txt">AllMempoolTix:</span></td><td><span id="AllMempoolTix">{{ .StakeInfo.AllMempoolTix }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="OwnMempoolTix_txt">OwnMempoolTix:</span></td><td><span id="OwnMempoolTix">{{ .StakeInfo.OwnMempoolTix }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="ProportionLive_txt">ProportionLive:</span></td><td><span id="ProportionLive">{{ .StakeInfo.ProportionLive }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="Difficulty_txt">Difficulty:</span></td><td><span id="Difficulty">{{ .StakeInfo.Difficulty }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="TotalSubsidy_txt">TotalSubsidy:</span></td><td><span id="TotalSubsidy">{{ .StakeInfo.TotalSubsidy }}</span></td></tr>
+        <tr><td><span style="font-size: larger;" id="UserCount_txt">User Count:</span></td><td><span id="UserCount">{{ .UserCount }}</span></td></tr>
+		<tr><td><span style="font-size: larger;" id="Network_txt">Network:</span></td><td><span id="Network">{{ .Network }}</span></td></tr>
+		<tr><td><span style="font-size: larger;" id="PoolFees_txt">Pool Fees:</span></td><td><span id="PoolFees">{{ .PoolFees }}</span></td></tr>
+		<tr><td><span style="font-size: larger;" id="PoolStatus_txt">Pool Status:</span></td><td><span id="PoolStatus">{{ .PoolStatus }}</span></td></tr>
+		<tr><td><span style="font-size: larger;" id="PoolEmail_txt">Pool Email:</span></td><td><span id="PoolEmail">{{ .PoolEmail }}</span></td></tr>
 	</table>
 </div>
 </div>

@@ -13,34 +13,74 @@
 			<table class="table table-condensed">
 				<tr>
 					<td style="border: none;"><span style="font-size: large;"><b id="p2sh_addr_txt">P2SH Address:</b></span></td>
-					<td style="border: none;">{{ .User.Multisigaddress }}</td>
+					<td style="border: none;">{{ .User.MultiSigAddress }}</td>
 				</tr>
 				<tr>
 					<td style="border: none;"><span style="font-size: large;"><b id="redeem_script_txt">Redeem Script:</b></span></td>
-					<td style="border: none; overflow: hidden; max-width: 450px; word-wrap: break-word;">{{ .User.Multisigscript }}</b>
+					<td style="border: none; overflow: hidden; max-width: 450px; word-wrap: break-word;">{{ .User.MultiSigScript }}</b>
 				</tr>
 			</table>
 		</div>
 	</div>
 </div>
+
 <div class="panel panel-default">
 	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
 		<h4 class="panel-title">
-			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-list" id="ticket_list_txt">Ticket List</a>
+			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-instr" id="ticket_instructions_txt">Ticket Instructions</a>
 		</h4>
 	</div>
-	<div id="collapse-list" class="panel-collapse collapse {{if .Tickets}}in{{end}}">
+
+	<div id="collapse-instr" class="panel-collapse collapse {{if not .TicketsLive }}in{{end}}">
+		<div class="panel-body" style="background-color: #333; color: #ffffff;">
+			<p><span style="font-size: larger;"><b><u id="instructions_1_txt">Step 1</u></b></span></p>
+			<p><span style="font-size: larger;"><b id="instructions_2_txt">You must be running dcrwallet 0.1.3 or newer.</b></span> <a href="https://github.com/decred/decred-release/releases"><span class="glyphicon glyphicon-download" aria-label="Download Decred Software"></span></a></p>
+			<p><span style="font-size: larger;"><b><u id="instructions_3_txt">Step 2</u></b></span></p>
+			<p><span style="font-size: larger;" id="instructions_4_txt">Your P2SH multisignature script for delegating votes has been generated. Please first import it locally into your wallet using <b>dcrctl</b> for safe keeping, so you can recover your funds and vote in the unlikely event of a pool failure:</span></p>
+
+			<p><span style="font-size: larger;">dcrctl --wallet importscript "script"</span></p>
+			<p><span style="font-size: larger;" id="instructions_5_txt">For example:</span></p>
+			<div class="cmd"><pre>$ dcrctl {{ if eq .Network "testnet"}}--testnet{{end}} --wallet importscript {{ .User.MultiSigScript }}</pre></div>
+
+			<p><span style="font-size: larger;" id="instructions_6_txt">After successfully importing the script into your wallet, you may generate tickets delegated to the pool in either of two ways:</span></p>
+
+			<p><span style="font-size: larger;"><b><u id="instructions_7_txt">Step 3</u></b></span></p>
+			<p><span style="font-size: larger;"><b id="instructions_8_txt">Option A</b></span></p>
+			<p><span style="font-size: larger;" id="instructions_9_txt">Start a wallet with funds available and the following flags:</span></p>
+			<p><span style="font-size: larger;">--enablestakemining</span></p>
+			<p><span style="font-size: larger;">--pooladdress={{ .User.UserFeeAddr }}</span></p>
+			<p><span style="font-size: larger;">--poolfees={{ .PoolFees }}</span></p>
+			<p><span style="font-size: larger;">--ticketaddress={{ .User.MultiSigAddress }}</span></p>
+			<p><span style="font-size: larger;">--ticketmaxprice=20</span></p>
+			<p><span style="font-size: larger;" id="instructions_10_txt">Unlock the wallet and it will automatically purchase stake tickets delegated to the pool address. For more information about these flags, please go <a href="https://wiki.decred.org/Solo_Stake_Mining">here</a>.</span></p>
+
+			<p><span style="font-size: larger;"><b id="instructions_11_txt">Option B</b></span></p>
+			<p><span style="font-size: larger;" id="instructions_12_txt">Start a wallet with funds available and manually purchase tickets with the following command using <b>dcrctl</b>:</span></p>
+			<p><span style="font-size: larger;">dcrctl {{ if eq .Network "testnet"}}--testnet{{end}} --wallet purchaseticket "fromaccount" spendlimit minconf ticketaddress numtickets poolfeeaddress poolfeeamt</span></p>
+			<div class="cmd"><pre>dcrctl {{ if eq .Network "testnet"}}--testnet{{end}} --wallet purchaseticket "default" 20 1 {{ .User.MultiSigAddress }} 1 {{ .User.UserFeeAddr }} {{ .PoolFees}}</pre></div>
+			<p><span style="font-size: larger;" id="instructions_13_txt">Will purchase a ticket delegated to the pool using the default account only if the current network price for a ticket is less than 20.0 coins.</span></p>
+		</div>
+	</div>
+</div>
+
+<div class="panel panel-default">
+	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
+		<h4 class="panel-title">
+			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-list" id="ticket_list_txt">Live/Immature Tickets</a>
+		</h4>
+	</div>
+	<div id="collapse-livelist" class="panel-collapse collapse {{if .TicketsLive}}in{{end}}">
 		<div class="panel-body" style="background-color: #333; color: #ffffff;">
 
-			{{if not .Tickets}}
+			{{if not .TicketsLive}}
 			<p><span style="font-size: larger;"><b id="no_tickets_txt">No tickets.</b></span></p>
 			{{end}}
-			{{if .Tickets}}
-			<table id="tickets" class="table table-condensed">
+			{{if .TicketsLive}}
+			<table id="ticketslive" class="table table-condensed datatablesort">
 			<thead>
 				<tr>
 					<th>Ticket</th>
-					<th>Explore</th>
+					<th>TicketHeight</th>
 					<th>Pool Control</th>
 					<th>Votebits</th>
 				</tr>
@@ -48,15 +88,15 @@
 			<tfoot>
 				<tr>
 					<th>Ticket</th>
-					<th>Explore</th>
+					<th>TicketHeight</th>
 					<th>Pool Control</th>
 					<th>Votebits</th>
 				</tr>
 			</tfoot>
 			<tbody>
-			{{ range $i, $data := .Tickets }}<tr>
-				<td>{{$data.Ticket}}</td>
-				<td><a href="https://{{$.Network}}.decred.org/tx/{{$data.Ticket}}" target="_blank"><span class="glyphicon glyphicon-link" aria-label="View On Block Explorer"></span></a></td>
+			{{ range $i, $data := .TicketsLive }}<tr>
+				<td><a href="https://{{$.Network}}.decred.org/tx/{{$data.Ticket}}">{{$data.Ticket}}</a></td>
+				<td>{{ $data.TicketHeight }}</td>
 				<td>{{ if eq $data.VoteBits 1 }}Yes{{end}}{{ if ne $data.VoteBits 1}}No{{end}}</td>
 				<td>{{ $data.VoteBits }}</td>
 				</tr>{{end}}
@@ -87,34 +127,124 @@
 		</div>
 	</div>
 </div>
+
 <div class="panel panel-default">
 	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
 		<h4 class="panel-title">
-			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-instr" id="ticket_instructions_txt">Ticket Instructions</a>
+			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-votedlist" id="voted_tickets_txt">Voted Tickets</a>
 		</h4>
 	</div>
-
-	<div id="collapse-instr" class="panel-collapse collapse {{if not .Tickets }}in{{end}}">
+	<div id="collapse-votedlist" class="panel-collapse collapse {{if .TicketsVoted}}in{{end}}">
 		<div class="panel-body" style="background-color: #333; color: #ffffff;">
-			<p><span style="font-size: larger;" id="instructions_1_txt">Your P2SH multisignature script for delegating votes has been generated. Please first import it locally into your wallet using <b>dcrctl</b> for safe keeping, so you can recover your funds and vote in the unlikely event of a pool failure:</span></p>
 
-			<p><span style="font-size: larger;">dcrctl --wallet importscript "script"</span></p>
-			<p><span style="font-size: larger;" id="instructions_2_txt">For example:</span></p>
-			<div class="cmd"><pre>$ dcrctl {{ if eq .Network "testnet"}}--testnet{{end}} --wallet importscript {{ .User.Multisigscript }}</pre></div>
+			{{if not .TicketsVoted}}
+			<p><span style="font-size: larger;"><b id="no_voted_tickets_txt">No voted tickets.</b></span></p>
+			{{end}}
+			{{if .TicketsVoted}}
+			<table id="ticketsvoted" class="table table-condensed datatablesort">
+			<thead>
+				<tr>
+					<th>Ticket</th>
+					<th>SpentByHeight</th>
+					<th>TicketHeight</th>
+				</tr>
+			</thead>
+			<tfoot>
+				<tr>
+					<th>Ticket</th>
+					<th>SpentByHeight</th>
+					<th>TicketHeight</th>
+				</tr>
+			</tfoot>
+			<tbody>
+			{{ range $i, $data := .TicketsVoted }}<tr>
+				<td><a href="https://{{$.Network}}.decred.org/tx/{{$data.Ticket}}">{{$data.Ticket}}</a></td>
+				<td>{{$data.SpentByHeight}}</td>
+				<td>{{$data.TicketHeight}}</td>
+				</tr>{{end}}
+			</tbody>
+			</table>
+			{{end}}
+		</div>
+	</div>
+</div>
 
-			<p><span style="font-size: larger;" id="instructions_3_txt">After successfully importing the script into your wallet, you may generate tickets delegated to the pool in either of two ways:</span></p>
+<div class="panel panel-default">
+	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
+		<h4 class="panel-title">
+			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-missedlist" id="missed_tickets_txt">Missed Tickets</a>
+		</h4>
+	</div>
+	<div id="collapse-missedlist" class="panel-collapse collapse {{if .TicketsMissed}}in{{end}}">
+		<div class="panel-body" style="background-color: #333; color: #ffffff;">
 
-			<p><span style="font-size: larger;"><b id="instructions_4_txt">Option A</b></span></p>
-			<p><span style="font-size: larger;" id="instructions_5_txt">Start a wallet with funds available and the following flags:</span></p>
-			<p><span style="font-size: larger;">--enablestakemining</span></p>
-			<p><span style="font-size: larger;">--ticketaddress={{ .User.Multisigaddress }}</span></p>
-			<p><span style="font-size: larger;" id="instructions_6_txt">Unlock the wallet and it will automatically purchase stake tickets delegated to the pool address. For more information about these flags, please go <a href="https://wiki.decred.org/Solo_Stake_Mining">here</a>.</span></p>
+			{{if not .TicketsMissed}}
+			<p><span style="font-size: larger;"><b id="no_missed_tickets_txt">No missed tickets.</b></span></p>
+			{{end}}
+			{{if .TicketsMissed}}
+			<table id="ticketsmissed" class="table table-condensed datatablesort">
+			<thead>
+				<div class="alert alert-warning"id="caution_missed_tickets_txt"><b>Caution!</b> Missed tickets can be caused by a poorly connected miner and may not be any fault of the pool.</div>
+				<tr>
+					<th>Ticket</th>
+					<th>SpentByHeight</th>
+					<th>TicketHeight</th>
+				</tr>
+			</thead>
+			<tfoot>
+				<tr>
+					<th>Ticket</th>
+					<th>SpentByHeight</th>
+					<th>TicketHeight</th>
+				</tr>
+			</tfoot>
+			<tbody>
+			{{ range $i, $data := .TicketsMissed }}<tr>
+				<td><a href="https://{{$.Network}}.decred.org/tx/{{$data.Ticket}}">{{$data.Ticket}}</a></td>
+				<td>{{$data.SpentByHeight}}</td>
+				<td>{{$data.TicketHeight}}</td>
+				</tr>{{end}}
+			</tbody>
+			</table>
+			{{end}}
+		</div>
+	</div>
+</div>
 
-			<p><span style="font-size: larger;"><b id="instructions_7_txt">Option B</b></span></p>
-			<p><span style="font-size: larger;" id="instructions_8_txt">Start a wallet with funds available and manually purchase tickets with the following command using <b>dcrctl</b>:</span></p>
-			<p><span style="font-size: larger;">dcrctl {{ if eq .Network "testnet"}}--testnet{{end}} --wallet purchaseticket "fromaccount" spendlimit minconf pooladdress</span></p>
-			<div class="cmd"><pre>dcrctl {{ if eq .Network "testnet"}}--testnet{{end}} --wallet purchaseticket "default" 20 1 {{ .User.Multisigaddress }}</pre></div>
-			<p><span style="font-size: larger;" id="instructions_9_txt">Will purchase a ticket delegated to the pool using the default account only if the current network price for a ticket is less than 20.0 coins.</span></p>
+<div class="panel panel-default">
+	<div class="panel-heading" style="background-color: #222; color: #ffffff;">
+		<h4 class="panel-title">
+			<a data-toggle="collapse" data-parent="#accordion" href="#collapse-invalidlist" id="invalid_tickets_txt">Invalid Tickets</a>
+		</h4>
+	</div>
+	<div id="collapse-invalidlist" class="panel-collapse collapse {{if .TicketsInvalid}}in{{end}}">
+		<div class="panel-body" style="background-color: #333; color: #ffffff;">
+
+			{{if not .TicketsInvalid}}
+			<p><span style="font-size: larger;"><b id="no_invalid_tickets_txt">No tickets.</b></span></p>
+			{{end}}
+			{{if .TicketsInvalid}}
+			<table id="ticketsinvalid" class="table table-condensed">
+			<thead>
+				<div class="alert alert-danger" id="alert_invalid_tickets_txt"><b>Alert!</b> Tickets appearing here did not pay the correct pool fee.
+				You will either need to vote these tickets yourself or contact your stake pool administrator to have them add
+				the ticket to the pool manually. Tickets will continue to appear here even if they were manually added to the pool.</div>
+				<tr>
+					<th>Ticket</th>
+				</tr>
+			</thead>
+			<tfoot>
+				<tr>
+					<th>Ticket</th>
+				</tr>
+			</tfoot>
+			<tbody>
+			{{ range $i, $data := .TicketsInvalid }}<tr>
+				<td><a href="https://{{$.Network}}.decred.org/tx/{{$data.Ticket}}">{{$data.Ticket}}</a></td>
+				</tr>{{end}}
+			</tbody>
+			</table>
+			{{end}}
 		</div>
 	</div>
 </div>
