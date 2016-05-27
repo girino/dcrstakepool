@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/golang/glog"
 	"github.com/gorilla/context"
 
-	"github.com/decred/dcrd/chaincfg"
+	"github.com/decred/dcrrpcclient"
 	"github.com/decred/dcrstakepool/controllers"
 	"github.com/decred/dcrstakepool/system"
 
@@ -19,9 +21,6 @@ import (
 	"github.com/zenazn/goji/web/middleware"
 )
 
-// chainParams is the Decred network the pool uses.
-var chainParams = &chaincfg.TestNetParams
-
 var (
 	cfg *config
 )
@@ -29,13 +28,13 @@ var (
 func main() {
 	// Load configuration and parse command line.  This function also
 	// initializes logging and configures it accordingly.
-	/*tcfg, _, err := loadConfig()
+	loadedCfg, _, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v", err)
 		os.Exit(1)
 	}
-	cfg = tcfg*/
-	dcrstakepoolLog.Infof("Version %s", version())
+	cfg = loadedCfg
+	dcrstakepoolLog.Infof("Version: %s", version())
+	dcrstakepoolLog.Infof("Network: %s", activeNetParams.Params.Name)
 
 	filename := flag.String("config", "config.toml", "Path to configuration file")
 
@@ -47,10 +46,32 @@ func main() {
 	application.Init(filename)
 	application.LoadTemplates()
 
+	// Set up signal handler
+	// SIGUSR1 = Reload html templates
+	sigs := make(chan os.Signal, 1)
+
+	signal.Notify(sigs, syscall.SIGUSR1)
+
+	go func() {
+		for {
+			sig := <-sigs
+			dcrstakepoolLog.Infof("Received: %s", sig)
+			fmt.Fprintf(os.Stdout, "Received: %s\n", sig)
+			if sig == syscall.SIGUSR1 {
+				application.LoadTemplates()
+				dcrstakepoolLog.Infof("LoadTemplates() executed.")
+				fmt.Fprintf(os.Stdout, "LoadTemplates() executed.\n")
+			}
+		}
+	}()
+
+	dcrrpcclient.UseLogger(dcrstakepoolLog)
+
 	// Setup static files
 	static := web.New()
 	publicPath := application.Config.Get("general.public_path").(string)
-	static.Get("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(publicPath))))
+	static.Get("/assets/*", http.StripPrefix("/assets/",
+		http.FileServer(http.Dir(publicPath))))
 
 	http.Handle("/assets/", static)
 
@@ -63,11 +84,17 @@ func main() {
 	goji.Use(application.ApplyCsrfProtection)
 	goji.Use(context.ClearHandler)
 
-	controller, err := controllers.NewMainController(chainParams)
+	controller, err := controllers.NewMainController(activeNetParams.Params,
+		cfg.ClosePool, cfg.ClosePoolMsg, cfg.ColdWalletExtPub,
+		cfg.PoolEmail, cfg.PoolFees, cfg.PoolLink,
+		cfg.RecaptchaSecret, cfg.RecaptchaSitekey,
+		cfg.WalletHosts, cfg.WalletCerts, cfg.WalletUsers, cfg.WalletPasswords)
 	if err != nil {
 		application.Close()
-		dcrstakepoolLog.Errorf("Failed to initialize the main controller: %v", err)
-		fmt.Fprintf(os.Stderr, "Failed to initialize the main controller: %v", err)
+		dcrstakepoolLog.Errorf("Failed to initialize the main controller: %v",
+			err)
+		fmt.Fprintf(os.Stderr, "Fatal error in controller init: %v",
+			err)
 		os.Exit(1)
 	}
 	controller.RPCStart()

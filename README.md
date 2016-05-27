@@ -13,33 +13,45 @@ dcrstakepool is a minimalist web application which provides a method for allowin
 
 #### Linux/BSD/MacOSX/POSIX - Build from Source
 
-- Install Go according to the installation instructions here:
-  http://golang.org/doc/install
+Building or updating from source requires the following build dependencies:
 
-- Ensure Go was installed properly and is a supported version:
+- **Go 1.5 or 1.6**
+
+  Installation instructions can be found here: http://golang.org/doc/install.
+  It is recommended to add `$GOPATH/bin` to your `PATH` at this point.
+
+  **Note:** If you are using Go 1.5, you must manually enable the vendor
+    experiment by setting the `GO15VENDOREXPERIMENT` environment variable to
+    `1`.  This step is not required for Go 1.6.
+
+- **Glide**
+
+  Glide is used to manage project dependencies and provide reproducible builds.
+  To install:
+
+  `go get -u github.com/Masterminds/glide`
+
+Unfortunately, the use of `glide` prevents a handy tool such as `go get` from
+automatically downloading, building, and installing the source in a single
+command.  Instead, the latest project and dependency sources must be first
+obtained manually with `git` and `glide`, and then `go` is used to build and
+install the project.
+
+- Run the following command to obtain the dcrstakepool code and all dependencies:
 
 ```bash
-$ go version
-$ go env GOROOT GOPATH
+$ git clone https://github.com/decred/dcrstakepool-private $GOPATH/src/github.com/decred/dcrstakepool
+$ cd $GOPATH/src/github.com/decred/dcrstakepool
+$ glide install
 ```
 
-NOTE: The `GOROOT` and `GOPATH` above must not be the same path.  It is
-recommended that `GOPATH` is set to a directory in your home directory such as
-`~/goprojects` to avoid write permission issues.
-
-- Run the following command to obtain dcrstakepool, all dependencies, and install it:
+- Assuming you have done the below configuration, build and run dcrstakepool:
 
 ```bash
-$ cd $GOPATH/src/github.com/decred
-$ git clone git@github.com:decred/dcrstakepool-private.git dcrstakepool
-$ cd dcrstakepool
-$ go get -u ./...
+$ cd $GOPATH/src/github.com/decred/dcrstakepool
+$ go build
+$ ./dcrstakepool
 ```
-
-- dcrstakepool (and utilities) will now be installed in either ```$GOROOT/bin``` or
-  ```$GOPATH/bin``` depending on your configuration.  If you did not already
-  add the bin directory to your system path during Go installation, we
-  recommend you do so now.
 
 ## Setup
 
@@ -53,7 +65,29 @@ These instructions assume you are familiar with dcrd/dcrwallet.
 
 - Run dcrd instances and let them fully sync
 
-#### dcrwallet
+#### Stake pool fees/cold wallet
+
+- Setup a new wallet for receiving payment for stake pool fees.  **This should be completely separate from the stake pool infrastructure.**
+
+```bash
+$ dcrwallet --create
+$ dcrwallet
+```
+
+- Get the master pubkey for the account you wish to use. This will be needed to configure dcrwallet and dcrstakepool.
+
+```bash
+$ dcrctl --wallet createnewaccount teststakepoolfees
+$ dcrctl --wallet getmasterpubkey teststakepoolfees
+```
+
+- Mark 10000 addresses in use for the account so the wallet will recognize transactions to those addresses. Fees from UserId 1 will go to address 1, UserId 2 to address 2, and so on.
+
+```bash
+$ dcrctl --wallet accountsyncaddressindex teststakepoolfees 0 10000
+```
+
+#### Stake pool voting wallets
 
 - Create the wallets.  All wallets should have the same seed.  **Backup the seed for disaster recovery!**
 
@@ -61,16 +95,10 @@ These instructions assume you are familiar with dcrd/dcrwallet.
 $ dcrwallet --create
 ```
 
-- Start dcrwallet with stake mining enabled and debug on (this prints the position of the address index which is useful if getnewaddress fails and the wallets get de-synced)
+- Start a properly configured dcrwallet and unlock it. See sample-dcrwallet.conf.
 
 ```bash
-$ dcrwallet --enablestakemining -d debug
-```
-
-- Unlock the wallet
-
-```bash
-$ dcrctl --wallet walletpassphrase pass 0
+$ dcrwallet
 ```
 
 #### MySQL
@@ -83,7 +111,7 @@ $ dcrctl --wallet walletpassphrase pass 0
 $ mysql -uroot -ppassword
 
 MySQL> CREATE USER 'stakepool'@'localhost' IDENTIFIED BY 'password';
-MySQL> GRANT ALL PRIVILEGES ON *.* TO '%' WITH GRANT OPTION;
+MySQL> GRANT ALL PRIVILEGES ON *.* TO 'stakepool'@'localhost' WITH GRANT OPTION;
 MySQL> FLUSH PRIVILEGES;
 MySQL> CREATE DATABASE stakepool;
 ```
@@ -94,16 +122,6 @@ MySQL> CREATE DATABASE stakepool;
 
 #### dcrstakepool
 
-- Register a recaptcha key for your domain at https://www.google.com/recaptcha/admin
-
-- Generate a secret for cookie authentication
-
-```bash
-$ openssl rand -hex 32
-```
-
-- add wallet server information to controllers/config.go
-
 - Create the .dcrstakepool directory and copy dcrwallet certs to it
 ```bash
 $ mkdir ~/.dcrstakepool
@@ -113,17 +131,21 @@ $ scp walletserver2:~/.dcrwallet/rpc.cert wallet2.cert
 $ scp walletserver3:~/.dcrwallet/rpc.cert wallet3.cert
 ```
 
-- add recaptcha secret to controllers/main.go and recaptcha sitekey to views/auth/signup.html or disable captcha if you don't want it
-
-- copy sample config and edit appropriately
+- Copy old-style sample config and edit appropriately
 ```bash
 $ cp -p config.toml.sample config.toml
 ```
 
-- Run dcrstakepool
+- Copy new-style sample config and edit appropriately
+```bash
+$ cp -p sample-dcrstakepool.conf dcrstakepool.conf
+```
+
+- Build and run the dcrstakepool binary from the dcrstakepool directory
 ```bash
 $ cd $GOPATH/src/github.com/decred/dcrstakepool
-$ dcrstakepool
+$ go build
+$ ./dcrstakepool
 ```
 
 ## Operations

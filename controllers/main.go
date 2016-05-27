@@ -2,8 +2,8 @@ package controllers
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net/http"
-	"sort"
 
 	"github.com/golang/glog"
 
@@ -11,7 +11,10 @@ import (
 
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/chaincfg/chainhash"
+	"github.com/decred/dcrd/dcrjson"
 	"github.com/decred/dcrutil"
+	"github.com/decred/dcrutil/hdkeychain"
+	"github.com/decred/dcrwallet/waddrmgr"
 
 	"github.com/decred/dcrstakepool/helpers"
 	"github.com/decred/dcrstakepool/models"
@@ -20,32 +23,76 @@ import (
 	"github.com/zenazn/goji/web"
 )
 
-var DisableSubmissions = true
-
+// disapproveBlockMask
 const disapproveBlockMask = 0x0000
+
+// approveBlockMask
 const approveBlockMask = 0x0001
 
 // MainController
 type MainController struct {
 	system.Controller
 
-	params     *chaincfg.Params
-	rpcServers *walletSvrManager
+	closePool        bool
+	closePoolMsg     string
+	extPub           *hdkeychain.ExtendedKey
+	poolEmail        string
+	poolFees         float64
+	poolLink         string
+	params           *chaincfg.Params
+	rpcServers       *walletSvrManager
+	recaptchaSecret  string
+	recaptchaSiteKey string
 }
 
 // NewMainController
-func NewMainController(params *chaincfg.Params) (*MainController, error) {
-	rpcs, err := newWalletSvrManager()
+func NewMainController(params *chaincfg.Params, closePool bool,
+	closePoolMsg string, extPubStr string, poolEmail string, poolFees float64,
+	poolLink string, recaptchaSecret string, recaptchaSiteKey string,
+	walletHosts []string, walletCerts []string, walletUsers []string,
+	walletPasswords []string) (*MainController, error) {
+	// Parse the extended public key and the pool fees.
+	key, err := hdkeychain.NewKeyFromString(extPubStr)
+	if err != nil {
+		return nil, err
+	}
+
+	rpcs, err := newWalletSvrManager(walletHosts, walletCerts, walletUsers, walletPasswords)
 	if err != nil {
 		return nil, err
 	}
 
 	mc := &MainController{
-		params:     params,
-		rpcServers: rpcs,
+		closePool:        closePool,
+		closePoolMsg:     closePoolMsg,
+		extPub:           key,
+		poolEmail:        poolEmail,
+		poolFees:         poolFees,
+		poolLink:         poolLink,
+		params:           params,
+		recaptchaSecret:  recaptchaSecret,
+		recaptchaSiteKey: recaptchaSiteKey,
+		rpcServers:       rpcs,
 	}
 
 	return mc, nil
+}
+
+// FeeAddressForUserID generates a unique payout address per used ID for
+// fees for an individual pool user.
+func (controller *MainController) FeeAddressForUserID(uid int) (dcrutil.Address,
+	error) {
+	if uint32(uid+1) > waddrmgr.MaxAddressesPerAccount {
+		return nil, fmt.Errorf("bad uid index %v", uid)
+	}
+
+	addrs, err := waddrmgr.AddressesDerivedFromExtPub(uint32(uid), uint32(uid+1),
+		controller.extPub, waddrmgr.ExternalBranch, controller.params)
+	if err != nil {
+		return nil, err
+	}
+
+	return addrs[0], nil
 }
 
 // RPCStart
@@ -102,8 +149,8 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	session := controller.GetSession(c)
 
 	// User may have a session so error out here as well
-	if DisableSubmissions && controller.params.Name == "mainnet" {
-		session.AddFlash("Stake pool is currently oversubscribed", "address")
+	if controller.closePool {
+		session.AddFlash(controller.closePoolMsg, "address")
 		return controller.Address(c, r)
 	}
 
@@ -113,7 +160,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 
 	dbMap := controller.GetDbMap(c)
 	user := models.GetUserById(dbMap, session.Values["UserId"].(int64))
-	if len(user.Userpubkeyaddr) > 0 {
+	if len(user.UserPubKeyAddr) > 0 {
 		session.AddFlash("Stake pool is currently limited to one address per account", "address")
 		return controller.Address(c, r)
 	}
@@ -190,7 +237,16 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return "/error", http.StatusSeeOther
 	}
 
-	models.UpdateUserById(dbMap, session.Values["UserId"].(int64), createMultiSig.Address, createMultiSig.RedeemScript, poolPubKeyAddr, userPubKeyAddr)
+	uid64 := session.Values["UserId"].(int64)
+	userFeeAddr, err := controller.FeeAddressForUserID(int(uid64))
+	if err != nil {
+		log.Warnf("unexpected error deriving pool addr: %s", err.Error())
+		return "/error", http.StatusSeeOther
+	}
+
+	models.UpdateUserById(dbMap, uid64, createMultiSig.Address,
+		createMultiSig.RedeemScript, poolPubKeyAddr, userPubKeyAddr,
+		userFeeAddr.EncodeAddress())
 
 	return "/tickets", http.StatusSeeOther
 }
@@ -219,6 +275,15 @@ func (controller *MainController) Error(c web.C, r *http.Request) (string, int) 
 
 // Home page route
 func (controller *MainController) Index(c web.C, r *http.Request) (string, int) {
+	if controller.closePool {
+		c.Env["IsClosed"] = true
+		c.Env["ClosePoolMsg"] = controller.closePoolMsg
+	}
+	c.Env["Network"] = controller.params.Name
+	c.Env["PoolEmail"] = controller.poolEmail
+	c.Env["PoolFees"] = controller.poolFees
+	c.Env["PoolLink"] = controller.poolLink
+
 	t := controller.GetTemplate(c)
 
 	widgets := helpers.Parse(t, "home", c.Env)
@@ -263,21 +328,22 @@ func (controller *MainController) SignInPost(c web.C, r *http.Request) (string, 
 		return controller.SignIn(c, r)
 	}
 
-	if DisableSubmissions && controller.params.Name == "mainnet" {
-		if len(user.Userpubkeyaddr) == 0 {
-			session.AddFlash("Stake pool is currently oversubscribed", "auth")
-			c.Env["IsDisabled"] = true
+	if controller.closePool {
+		if len(user.UserPubKeyAddr) == 0 {
+			session.AddFlash(controller.closePoolMsg, "auth")
+			c.Env["IsClosed"] = true
+			c.Env["ClosePoolMsg"] = controller.closePoolMsg
 			return controller.SignIn(c, r)
 		}
 	}
 
 	session.Values["UserId"] = user.Id
 
-	if user.Multisigaddress == "" {
+	if user.MultiSigAddress == "" {
 		return "/address", http.StatusSeeOther
-	} else {
-		return "/tickets", http.StatusSeeOther
 	}
+
+	return "/tickets", http.StatusSeeOther
 }
 
 // Sign up route
@@ -287,11 +353,13 @@ func (controller *MainController) SignUp(c web.C, r *http.Request) (string, int)
 
 	// With that kind of flags template can "figure out" what route is being rendered
 	c.Env["IsSignUp"] = true
-	if DisableSubmissions && controller.params.Name == "mainnet" {
-		c.Env["IsDisabled"] = true
+	if controller.closePool {
+		c.Env["IsClosed"] = true
+		c.Env["ClosePoolMsg"] = controller.closePoolMsg
 	}
 
 	c.Env["Flash"] = session.Flashes("auth")
+	c.Env["RecaptchaSiteKey"] = controller.recaptchaSiteKey
 
 	var widgets = controller.Parse(t, "auth/signup", c.Env)
 
@@ -303,13 +371,13 @@ func (controller *MainController) SignUp(c web.C, r *http.Request) (string, int)
 
 // Sign Up form submit route. Registers new user or shows Sign Up route with appropriate messages set in session
 func (controller *MainController) SignUpPost(c web.C, r *http.Request) (string, int) {
-	if DisableSubmissions && controller.params.Name == "mainnet" {
+	if controller.closePool {
 		log.Infof("attempt to signup while registration disabled")
 		return "/error?r=/signup", http.StatusSeeOther
 	}
 
 	re := recaptcha.R{
-		Secret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe",
+		Secret: controller.recaptchaSecret,
 	}
 
 	email, password := r.FormValue("email"), r.FormValue("password")
@@ -371,6 +439,14 @@ func (controller *MainController) Stats(c web.C, r *http.Request) (string, int) 
 		return "/error?r=/stats", http.StatusSeeOther
 	}
 
+	c.Env["Network"] = controller.params.Name
+	if controller.closePool {
+		c.Env["PoolStatus"] = "Closed"
+	} else {
+		c.Env["PoolStatus"] = "Open"
+	}
+	c.Env["PoolEmail"] = controller.poolEmail
+	c.Env["PoolFees"] = controller.poolFees
 	c.Env["StakeInfo"] = gsi
 	c.Env["UserCount"] = usercount
 
@@ -398,18 +474,33 @@ func (controller *MainController) Status(c web.C, r *http.Request) (string, int)
 
 	if controller.RPCIsStopped() {
 		return controller.Parse(t, "main", c.Env), http.StatusInternalServerError
-	} else {
-		return controller.Parse(t, "main", c.Env), http.StatusOK
 	}
+
+	return controller.Parse(t, "main", c.Env), http.StatusOK
 }
 
 // Tickets page route
 func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int) {
-	type TicketInfo struct {
-		Ticket   string
-		VoteBits uint16
+	type TicketInfoHistoric struct {
+		Ticket        string
+		SpentByHeight uint32
+		TicketHeight  uint32
 	}
-	ticketinfo := map[int]TicketInfo{}
+
+	type TicketInfoInvalid struct {
+		Ticket string
+	}
+
+	type TicketInfoLive struct {
+		Ticket       string
+		TicketHeight uint32
+		VoteBits     uint16
+	}
+
+	ticketInfoInvalid := map[int]TicketInfoInvalid{}
+	ticketInfoLive := map[int]TicketInfoLive{}
+	ticketInfoMissed := map[int]TicketInfoHistoric{}
+	ticketInfoVoted := map[int]TicketInfoHistoric{}
 
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
@@ -420,20 +511,21 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 
 	c.Env["IsTickets"] = true
 	c.Env["Network"] = controller.params.Name
+	c.Env["PoolFees"] = controller.poolFees
 	c.Env["Title"] = "Decred Stake Pool - Tickets"
 
 	dbMap := controller.GetDbMap(c)
 	user := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 
-	if user.Multisigaddress == "" {
+	if user.MultiSigAddress == "" {
 		c.Env["Error"] = "No multisig data has been generated"
 		log.Info("Multisigaddress empty")
 	}
 
-	ms, err := dcrutil.DecodeAddress(user.Multisigaddress, controller.params)
+	ms, err := dcrutil.DecodeAddress(user.MultiSigAddress, controller.params)
 	if err != nil {
 		c.Env["Error"] = "Invalid multisig data in database"
-		log.Infof("Invalid address %v in database: %v", user.Multisigaddress, err)
+		log.Infof("Invalid address %v in database: %v", user.MultiSigAddress, err)
 	}
 
 	var widgets = controller.Parse(t, "tickets", c.Env)
@@ -448,19 +540,21 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	if controller.RPCIsStopped() {
 		return "/error", http.StatusSeeOther
 	}
-	tix, err := controller.rpcServers.TicketsForAddress(ms)
+
+	spui := new(dcrjson.StakePoolUserInfoResult)
+	spui, err = controller.rpcServers.StakePoolUserInfo(ms)
 	if err != nil {
-		log.Infof("RPC TicketsForAddress failed: %v", err)
-		return "/error?r=/tickets", http.StatusSeeOther
+		// Log the error, but do not return. Consider reporting
+		// the error to the user on the page. A blank tickets
+		// page will be displayed in the meantime.
+		log.Infof("RPC StakePoolUserInfo failed: %v", err)
 	}
 
-	if len(tix.Tickets) > 0 {
+	if spui != nil && len(spui.Tickets) > 0 {
 		var tickethashes []*chainhash.Hash
 
-		sort.Strings(tix.Tickets)
-
-		for _, ticket := range tix.Tickets {
-			th, err := chainhash.NewHashFromStr(ticket)
+		for _, ticket := range spui.Tickets {
+			th, err := chainhash.NewHashFromStr(ticket.Ticket)
 			if err != nil {
 				log.Infof("NewHashFromStr failed for %v", ticket)
 				return "/error?r=/tickets", http.StatusSeeOther
@@ -468,18 +562,45 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 			tickethashes = append(tickethashes, th)
 		}
 
+		// TODO: only get votebits for live tickets
 		gtvb, err := controller.rpcServers.GetTicketsVoteBits(tickethashes)
 		if err != nil {
 			log.Infof("GetTicketsVoteBits failed %v", err)
 			return "/error?r=/tickets", http.StatusSeeOther
 		}
 
-		for idx, ticket := range tix.Tickets {
-			ticketinfo[idx] = TicketInfo{ticket, gtvb.VoteBitsList[idx].VoteBits}
+		for idx, ticket := range spui.Tickets {
+			switch {
+			case ticket.Status == "live":
+				ticketInfoLive[idx] = TicketInfoLive{
+					Ticket:       ticket.Ticket,
+					TicketHeight: ticket.TicketHeight,
+					VoteBits:     gtvb.VoteBitsList[idx].VoteBits,
+				}
+			case ticket.Status == "missed":
+				ticketInfoMissed[idx] = TicketInfoHistoric{
+					Ticket:        ticket.Ticket,
+					SpentByHeight: ticket.SpentByHeight,
+					TicketHeight:  ticket.TicketHeight,
+				}
+			case ticket.Status == "voted":
+				ticketInfoVoted[idx] = TicketInfoHistoric{
+					Ticket:        ticket.Ticket,
+					SpentByHeight: ticket.SpentByHeight,
+					TicketHeight:  ticket.TicketHeight,
+				}
+			}
+		}
+
+		for idx, ticket := range spui.InvalidTickets {
+			ticketInfoInvalid[idx] = TicketInfoInvalid{ticket}
 		}
 	}
 
-	c.Env["Tickets"] = ticketinfo
+	c.Env["TicketsInvalid"] = ticketInfoInvalid
+	c.Env["TicketsLive"] = ticketInfoLive
+	c.Env["TicketsMissed"] = ticketInfoMissed
+	c.Env["TicketsVoted"] = ticketInfoVoted
 	widgets = controller.Parse(t, "tickets", c.Env)
 	c.Env["Content"] = template.HTML(widgets)
 
@@ -507,31 +628,31 @@ func (controller *MainController) TicketsPost(c web.C, r *http.Request) (string,
 	dbMap := controller.GetDbMap(c)
 	user := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 
-	if user.Multisigaddress == "" {
+	if user.MultiSigAddress == "" {
 		log.Info("Multisigaddress empty")
 		return "/error?r=/tickets", http.StatusSeeOther
 	}
 
-	ms, err := dcrutil.DecodeAddress(user.Multisigaddress, controller.params)
+	ms, err := dcrutil.DecodeAddress(user.MultiSigAddress, controller.params)
 	if err != nil {
-		log.Infof("Invalid address %v in database: %v", user.Multisigaddress, err)
+		log.Infof("Invalid address %v in database: %v", user.MultiSigAddress, err)
 		return "/error?r=/tickets", http.StatusSeeOther
 	}
 
 	if controller.RPCIsStopped() {
 		return "/error", http.StatusSeeOther
 	}
-	tix, err := controller.rpcServers.TicketsForAddress(ms)
+	spui, err := controller.rpcServers.StakePoolUserInfo(ms)
 	if err != nil {
-		log.Infof("RPC TicketsForAddress failed: %v", err)
+		log.Infof("RPC StakePoolUserInfo failed: %v", err)
 		return "/error?r=/tickets", http.StatusSeeOther
 	}
 
-	for _, ticket := range tix.Tickets {
+	for _, ticket := range spui.Tickets {
 		if controller.RPCIsStopped() {
 			return "/error", http.StatusSeeOther
 		}
-		th, err := chainhash.NewHashFromStr(ticket)
+		th, err := chainhash.NewHashFromStr(ticket.Ticket)
 		if err != nil {
 			log.Infof("NewHashFromStr failed for %v", ticket)
 			return "/error?r=/tickets", http.StatusSeeOther

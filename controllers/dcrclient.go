@@ -3,7 +3,6 @@ package controllers
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"sync"
@@ -32,6 +31,7 @@ const (
 	getTxOutFn
 	getStakeInfoFn
 	connectedFn
+	stakePoolUserInfoFn
 )
 
 var (
@@ -189,6 +189,18 @@ type connectedMsg struct {
 	reply chan connectedResponse
 }
 
+// stakePoolUserInfoResponse
+type stakePoolUserInfoResponse struct {
+	userInfo *dcrjson.StakePoolUserInfoResult
+	err      error
+}
+
+// stakePoolUserInfoMsg
+type stakePoolUserInfoMsg struct {
+	userAddr dcrutil.Address
+	reply    chan stakePoolUserInfoResponse
+}
+
 // connectionError is an error relating to the connection,
 // so that connection failures can be handled without
 // crashing the server.
@@ -244,6 +256,10 @@ out:
 			case connectedMsg:
 				resp := w.executeInSequence(connectedFn, msg)
 				respTyped := resp.(*connectedResponse)
+				msg.reply <- *respTyped
+			case stakePoolUserInfoMsg:
+				resp := w.executeInSequence(stakePoolUserInfoFn, msg)
+				respTyped := resp.(*stakePoolUserInfoResponse)
 				msg.reply <- *respTyped
 			default:
 				log.Infof("Invalid message type in wallet RPC "+
@@ -592,6 +608,24 @@ func (w *walletSvrManager) executeInSequence(fn functionName, msg interface{}) i
 
 		resp.err = nil
 		return resp
+
+	case stakePoolUserInfoFn:
+		spuim := msg.(stakePoolUserInfoMsg)
+		resp := new(stakePoolUserInfoResponse)
+		spuirs := make([]*dcrjson.StakePoolUserInfoResult, w.serversLen,
+			w.serversLen)
+		for i, s := range w.servers {
+			spuir, err := s.StakePoolUserInfo(spuim.userAddr)
+			if err != nil {
+				log.Infof("stakePoolUserInfoFn failure on server %v: %v", i, err)
+				resp.err = err
+				return resp
+			}
+			spuirs[i] = spuir
+		}
+
+		resp.userInfo = spuirs[0]
+		return resp
 	}
 
 	return nil
@@ -802,6 +836,21 @@ func (w *walletSvrManager) GetTxOut(hash *chainhash.Hash, idx uint32) (*dcrjson.
 	}
 	response := <-reply
 	return response.txOut, response.err
+}
+
+// StakePoolUserInfo gets the stake pool user information for a given user.
+//
+// This can race depending on what wallet is currently processing, so failures
+// from this function should NOT cause fatal errors on the web server like the
+// other RPC client calls.
+func (w *walletSvrManager) StakePoolUserInfo(userAddr dcrutil.Address) (*dcrjson.StakePoolUserInfoResult, error) {
+	reply := make(chan stakePoolUserInfoResponse)
+	w.msgChan <- stakePoolUserInfoMsg{
+		userAddr: userAddr,
+		reply:    reply,
+	}
+	response := <-reply
+	return response.userInfo, response.err
 }
 
 // getStakeInfo returns the cached current stake statistics about the wallet if
@@ -1029,31 +1078,26 @@ func walletSvrsSync(wsm *walletSvrManager) error {
 
 // newWalletSvrManager returns a new decred wallet server manager.
 // Use Start to begin processing asynchronous block and inv updates.
-func newWalletSvrManager() (*walletSvrManager, error) {
-	var serverCfgs []ServerCfg
-	err := json.Unmarshal(serverPoolCfg, &serverCfgs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config json: %v", err.Error())
-	}
+func newWalletSvrManager(walletHosts []string, walletCerts []string, walletUsers []string, walletPasswords []string) (*walletSvrManager, error) {
 
-	localServers := make([]*dcrrpcclient.Client, len(serverCfgs), len(serverCfgs))
-	for i, scfg := range serverCfgs {
-		certs, err := ioutil.ReadFile(scfg.Cert)
+	localServers := make([]*dcrrpcclient.Client, len(walletHosts), len(walletHosts))
+	for i := range walletHosts {
+		certs, err := ioutil.ReadFile(walletCerts[i])
 		if err != nil {
 			log.Errorf("Error %v", err)
 		}
 		connCfg := &dcrrpcclient.ConnConfig{
-			Host:         scfg.Host,
+			Host:         walletHosts[i],
 			Endpoint:     "ws",
-			User:         scfg.User,
-			Pass:         scfg.Pass,
+			User:         walletUsers[i],
+			Pass:         walletPasswords[i],
 			Certificates: certs,
 		}
 
 		client, err := dcrrpcclient.New(connCfg, nil)
 		if err != nil {
-			fmt.Printf("couldn't connect to RPC server #%v: %v", scfg.Host, err)
-			log.Infof("couldn't connect to RPC server #%v: %v", scfg.Host, err)
+			fmt.Printf("couldn't connect to RPC server #%v: %v", walletHosts[i], err)
+			log.Infof("couldn't connect to RPC server #%v: %v", walletHosts[i], err)
 			return nil, fmt.Errorf("RPC server connection failure on start")
 		}
 		localServers[i] = client
@@ -1068,7 +1112,7 @@ func newWalletSvrManager() (*walletSvrManager, error) {
 		quit:                   make(chan struct{}),
 	}
 
-	err = walletSvrsSync(&wsm)
+	err := walletSvrsSync(&wsm)
 	if err != nil {
 		return nil, err
 	}
