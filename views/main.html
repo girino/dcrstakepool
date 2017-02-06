@@ -14,12 +14,21 @@
 			</div>
 			<div class="navbar-collapse collapse">
 				<ul class="nav navbar-nav">
-					<li {{if .IsIndex }}class="active"{{end}}><a href="/">Home</a></li>
+					<li {{if .IsIndex }}class="active"{{end}}><a href="/">Pool</a></li>
+					<li><a href="http://stats.decredbrasil.com/dashboard">Dashboard</a></li>
 					<li {{if .IsStats }}class="active"{{end}}><a href="/stats">Stats</a></li>
 					{{if .User}}<li {{if .IsAddress }}class="active"{{end}}><a href="/address">Address</a></li>{{end}}
 					{{if .User}}<li {{if .IsSettings }}class="active"{{end}}><a href="/settings">Settings</a></li>{{end}}
 					{{if .IsStatus}}<li class="active"><a href="/status">Status</a></li>{{end}}
 					{{if .User}}{{if .User.MultiSigAddress}}<li {{if .IsTickets }}class="active"{{end}}><a href="/tickets">Tickets</a></li>{{end}}{{end}}
+					<li><a href="https://goo.gl/eSq80h" tarket="_blank">Tutorial (pt_BR)</a></li>
+				</ul>
+				<ul class="nav navbar-nav navbar-right" style="margin-top: 10px">
+					<li><a></a></li>
+					<li><img alt="EN" src="/assets/i18n/images/flag_en.png" id="to_en"></li>
+					<li><a></a></li>
+					<li><img alt="PT" src="/assets/i18n/images/flag_pt.png" id="to_pt"></li>
+					<li><a></a></li>
 				</ul>
 				{{if .User}}
 				<ul class="nav navbar-nav navbar-right">
