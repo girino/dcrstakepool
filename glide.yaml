@@ -22,12 +22,9 @@ import:
   subpackages:
   - waddrmgr
 - package: github.com/go-sql-driver/mysql
-- package: github.com/go-utils/uslice
-- package: github.com/golang/glog
 - package: github.com/gorilla/context
 - package: github.com/gorilla/sessions
 - package: github.com/haisum/recaptcha
-- package: github.com/pelletier/go-toml
 - package: github.com/zenazn/goji
   subpackages:
   - graceful
@@ -37,3 +34,4 @@ import:
   subpackages:
   - bcrypt
 - package: gopkg.in/gorp.v1
+- package: github.com/dgrijalva/jwt-go

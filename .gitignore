@@ -1,3 +1,8 @@
 config.toml
 dcrstakepool
 vendor
+.vscode/
+controllers/config.go*
+testing/
+*.orig
+
