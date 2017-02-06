@@ -1,6 +1,8 @@
-hash: 7005b774d59e299b20b9c90c05bc2e91f5ce2810a26b81521da02ac392283fba
-updated: 2016-12-15T22:41:56.662723628-06:00
+hash: 34b048b3c2da4c8fa64baadd100ee926773adeca0ab443bb08bcdfd7d9ce88aa
+updated: 2017-02-06T18:41:54.819248832Z
 imports:
+- name: github.com/aokoli/goutils
+  version: 9c37978a95bd5c709a15883b6242714ea6709e64
 - name: github.com/btcsuite/btclog
   version: 73889fb79bd687870312b6e40effcecffbd57d30
 - name: github.com/btcsuite/fastsha256
@@ -76,6 +78,10 @@ imports:
   version: 52389059572b4736b2b7d899b0242ecc449c8779
 - name: github.com/haisum/recaptcha
   version: 8527d614dbb33cac7cf2433c83ad6d3346761276
+- name: github.com/Masterminds/sprig
+  version: 69011c0cd9b4d2e0733c4d9e2c8e2a5a0d0a2f2f
+- name: github.com/satori/go.uuid
+  version: 879c5887cd475cd7864858769793b2ceb0d44feb
 - name: github.com/zenazn/goji
   version: 4d7077956293261309684d3cf1af673f773c6819
   subpackages:

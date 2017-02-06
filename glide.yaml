@@ -35,3 +35,5 @@ import:
   - bcrypt
 - package: gopkg.in/gorp.v1
 - package: github.com/dgrijalva/jwt-go
+- package: github.com/Masterminds/sprig
+  version: ~2.8.0
