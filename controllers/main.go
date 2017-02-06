@@ -339,6 +339,11 @@ func (controller *MainController) APIStats(c web.C,
 		poolStatus = "Open"
 	}
 
+	var trueMissed uint32
+	var propMissed float64
+	trueMissed = gsi.Missed - gsi.Expired
+	propMissed = float64(trueMissed) / float64(gsi.Voted)
+
 	stats := &poolapi.Stats{
 		AllMempoolTix:        gsi.AllMempoolTix,
 		APIVersionsSupported: controller.APIVersionsSupported,
@@ -346,11 +351,11 @@ func (controller *MainController) APIStats(c web.C,
 		Difficulty:           gsi.Difficulty,
 		Immature:             gsi.Immature,
 		Live:                 gsi.Live,
-		Missed:               gsi.Missed,
+		Missed:               trueMissed,
 		OwnMempoolTix:        gsi.OwnMempoolTix,
 		PoolSize:             gsi.PoolSize,
 		ProportionLive:       gsi.ProportionLive,
-		ProportionMissed:     gsi.ProportionMissed,
+		ProportionMissed:     propMissed,
 		Revoked:              gsi.Revoked,
 		TotalSubsidy:         gsi.TotalSubsidy,
 		Voted:                gsi.Voted,
