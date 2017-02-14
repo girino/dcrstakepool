@@ -67,44 +67,6 @@ $(document).ready(function() {
    });
 });
 
-// Fill in price data using AJAX and API
-$(document).ready(function() {
-   $.ajax({
-      url: "disabled/api/v1/ticketprice",
-      dataType: 'json',
-      type: 'GET',
-      success: function (data) {
-         console.log(data.data);
-         $("[id=ticket-price").text(data.data.CurrentTicketPrice.toFixed(2));
-         $("[id=ticket-avg").text(data.data.AvgTicketPrice.toFixed(2));
-         $("[id=next-ticket-price").text(data.data.NextTicketPrice.toFixed(2));
-         // up or down
-         var movement = "up";
-         if (data.data.CurrentTicketPrice > data.data.NextTicketPrice) movement = "down";
-         $("[id=price-movement").text(movement);
-         // compare to average
-         var compare = "above";
-         if (data.data.CurrentTicketPrice < data.data.AvgTicketPrice) compare = "below";
-         if (data.data.CurrentTicketPrice < data.data.AvgTicketPrice * 1.2) compare = "just above";
-         $("[id=price-compare").text(compare);
-         var blocks = 144 - (data.data.Height % 144);
-         $("[id=block-adjust").text(blocks);
-         // recomendation
-         var recommend = "waiting";
-         if (compare == "below" && movement == "up") recommend = "buying";
-         if (compare == "just above" && movement == "up") recommend = "watching";
-         $("[id=ticket-recommend").text(recommend);
-         // time to adjust
-         var time = new Date(blocks*5*60 * 1000).toISOString().substr(11, 8);
-         $("[id=time-adjust").text(time);
-      },
-      error: function (data) {
-         console.log("fail", data);
-         console.log(data);
-      },
-   });
-});
-
 $(document).ready(function() {
 
    // prepare data structures
