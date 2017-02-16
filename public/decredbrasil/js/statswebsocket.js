@@ -13,29 +13,31 @@ $(document).ready(function() {
 
    $.updatePrices = function(p) {
       if (p.CurrentTicketPrice != undefined) {
-         $("[id=ticket-price").text(p.CurrentTicketPrice.toFixed(2));
+         $("p #ticket-price").text(p.CurrentTicketPrice.toFixed(2));
+         $("h1 #ticket-price").text(p.CurrentTicketPrice.toFixed(2));
+	 $("h1 #ticket-price").css("color", color);
       }
       if (p.NextTicketPrice != undefined) {
-         $("[id=next-ticket-price").text(p.NextTicketPrice.toFixed(2));
+         $("#next-ticket-price").text(p.NextTicketPrice.toFixed(2));
       }
       if (p.Height != undefined) {
          var blocks = 144 - (p.Height % 144);
-         $("[id=block-adjust").text(blocks);
+         $("#block-adjust").text(blocks);
          // time to adjust
          var time = new Date(blocks*5*60 * 1000).toISOString().substr(11, 8);
-         $("[id=time-adjust").text(time);
+         $("#time-adjust").text(time);
       }
       if (p.Locked != undefined && p.PoolSize != undefined) {
          p.AvgTicketPrice = (1.0*p.Locked)/(1.0*p.PoolSize);
-         $("[id=ticket-avg").text(p.AvgTicketPrice.toFixed(2));
+         $("#ticket-avg").text(p.AvgTicketPrice.toFixed(2));
       }
       // up or down?
       if (p.CurrentTicketPrice != undefined &&
           p.NextTicketPrice != undefined) {
          if (p.CurrentTicketPrice > p.NextTicketPrice) {
-            $("[id=price-movement").text("down");
+            $("#price-movement").text("down");
          } else {
-            $("[id=price-movement").text("up");
+            $("#price-movement").text("up");
 	}
       }
       // recomendation
@@ -54,7 +56,7 @@ $(document).ready(function() {
             action = "watching";
 	    color = "#69D3F5";
 	 }
-         $("[id=ticket-recommend").text(action);
+         $("#ticket-recommend").text(action);
          $("#ticket-recommend").css("color", color);
          $("#ticket-recommend").css("text-transform", "uppercase");
 	 $("h1 #ticket-price").css("color", color);
@@ -64,7 +66,7 @@ $(document).ready(function() {
             cmp = "below";
          else if (p.CurrentTicketPrice < (1.2*p.AvgTicketPrice))
             cmp = "just above";
-         $("[id=price-compare").text(cmp);
+         $("#price-compare").text(cmp);
       }
    }
 
