@@ -32,30 +32,39 @@ $(document).ready(function() {
       // up or down?
       if (p.CurrentTicketPrice != undefined &&
           p.NextTicketPrice != undefined) {
-         if (p.CurrentTicketPrice > p.NextTicketPrice) 
+         if (p.CurrentTicketPrice > p.NextTicketPrice) {
             $("[id=price-movement").text("down");
-         else
+         } else {
             $("[id=price-movement").text("up");
+	}
       }
       // recomendation
       if (p.CurrentTicketPrice != undefined &&
           p.AvgTicketPrice != undefined &&
           p.NextTicketPrice != undefined) {
          var action = "waiting";
+	 var color = "#FD714A"; // orange
          if (p.CurrentTicketPrice < p.AvgTicketPrice &&
-            p.CurrentTicketPrice < p.NextTicketPrice) 
+            p.CurrentTicketPrice < p.NextTicketPrice) {
             action = "buying";
+	    color = "#2ED6A1"; // Turquiose
+	 }
          else if (p.CurrentTicketPrice < (1.2*p.AvgTicketPrice) &&
-             p.CurrentTicketPrice < p.NextTicketPrice)
+             p.CurrentTicketPrice < p.NextTicketPrice) {
             action = "watching";
+	    color = "#69D3F5";
+	 }
          $("[id=ticket-recommend").text(action);
+         $("#ticket-recommend").css("color", color);
+         $("#ticket-recommend").css("text-transform", "uppercase");
+	 $("h1 #ticket-price").css("color", color);
          // how it compares to averge?
          var cmp = "above";
          if (p.CurrentTicketPrice < p.AvgTicketPrice)
             cmp = "below";
          else if (p.CurrentTicketPrice < (1.2*p.AvgTicketPrice))
             cmp = "just above";
-         $("[id=ticket-compare").text(cmp);
+         $("[id=price-compare").text(cmp);
       }
    }
 
