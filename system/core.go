@@ -16,7 +16,7 @@ import (
 	"github.com/decred/dcrstakepool/models"
 	"github.com/gorilla/sessions"
 	"github.com/zenazn/goji/web"
-	"gopkg.in/gorp.v1"
+	"github.com/go-gorp/gorp"
 )
 
 // CSRF token constants
@@ -87,6 +87,11 @@ func (application *Application) LoadTemplates(templatePath string) error {
 	var templates []string
 
 	fn := func(path string, f os.FileInfo, err error) error {
+		// If path doesn't exist, or other error with path, return error so that
+		// Walk will quit and return the error to the caller.
+		if err != nil {
+			return err
+		}
 		if f.IsDir() != true && strings.HasSuffix(f.Name(), ".html") {
 			templates = append(templates, path)
 		}
@@ -94,13 +99,20 @@ func (application *Application) LoadTemplates(templatePath string) error {
 	}
 
 	err := filepath.Walk(templatePath, fn)
-
 	if err != nil {
 		return err
 	}
 
+	// Since template.Must panics with non-nil error, it is much more
+	// informative to pass the error to the caller (runMain) to log it and exit
+	// gracefully.
 	t := template.New("dcrstakepool").Funcs(sprig.FuncMap())
-	application.Template = template.Must(t.ParseFiles(templates...))
+	httpTemplates, err := t.ParseFiles(templates...)
+	if err != nil {
+		return err
+	}
+
+	application.Template = template.Must(httpTemplates, nil)
 	application.TemplatesPath = templatePath
 	return nil
 }
