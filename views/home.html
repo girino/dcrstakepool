@@ -4,9 +4,19 @@
     <div class="col-xs-15 col-md-8 col-lg-8 notication-col center-block">
     </div>
     <div class="col-sm-12 col-md-10 col-lg-6 center-block">
-<h1 class="wow bounceInLeft">Current ticket price: <span id="ticket-price">...</span> DCR. <br/>We recommend <span id="ticket-recommend">...</span></h1>
-        <p class="wow bounceInLeft">Current price of <span id="ticket-price"></span> DCR is <span id="price-compare"></span> the average (<span id="ticket-avg"></span> DCR) and is expected to go <span id="price-movement"></span> to <span id="next-ticket-price"></span> DCR in <span id="block-adjust"></span> blocks (aprox. <span id="time-adjust"></span>)</p>
-       <hr>
+       <div class="panel panel-default panel-control">
+           <div class="panel-body">
+             <h1>Current ticket price: <span id="ticket-price">...</span> DCR. <br/>We recommend <span id="ticket-recommend">...</span></h1>
+             <p>Current price of <span id="ticket-price"></span> DCR is <span id="price-compare"></span> the average (<span id="ticket-avg"></span> DCR) and is expected to go <span id="price-movement"></span> to <span id="next-ticket-price"></span> DCR in <span id="block-adjust"></span> blocks (aprox. <span id="time-adjust"></span>)</p>
+           </div>
+       </div>
+       <div class="panel panel-default panel-control">
+           <div class="panel-body">
+             <h1>Recomended ticket fee: <span id="ticket-fee" style="color: #2ED6A1;">...</span> DCR. <br/>Expected profit: <span id="ticket-profit" style="color: #2ED6A1;">...</span></h1>
+             <p> The average ticket fee in the last block was <span id="last-block-mean">...</span>, and the average ticket fee on mempool was <span id="mempool-mean">...</span>. Profit was calculated using the higher of the two.</p>
+	     <p>  Using the recommended fee is not a guarantee that your tickets will be confirmed. The next block might have a higher fee than the current one.</p>
+           </div>
+       </div>
        <h1>Decred Stake Pool Overview</h1>
        <p>A stake pool is used to delegate your voting powers to a third party (the pool). The pool <b>cannot</b> steal your funds.</p>
        <p>Participating in a stake pool is perfect for people who wish to take part in Decred's proof of stake voting but can't due to:</p>

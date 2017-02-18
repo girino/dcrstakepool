@@ -10,6 +10,42 @@ $(document).ready(function() {
       PoolSize: undefined,
       Locked: undefined,
    };
+   
+   $.feeInfo = {
+      MemPoolMean: undefined,
+      BlockMean: undefined,
+   }
+
+   $.ceilFixed = function(n, d) {
+      var exp = Math.pow(10, d).toFixed(0);
+      return (Math.ceil(n*exp)/exp).toFixed(d);
+   }
+
+   var BLOCK_REWARD = 31.19582664;
+   $.getProfit = function(f, p, h) {
+      var nextHeight = h + (12.0 * 24.0 * 30.0);
+      var reward = Math.pow(100.0/101.0, Math.ceil(nextHeight / 6144.0) - 1) * BLOCK_REWARD * 0.06; 
+      // but the fee only applies to 539 bytes, not the full 1024 bytes, so...
+      var effectiveFee = f * (540/1024);
+      var totalCost = p + effectiveFee;
+      var totalReward = p + reward;
+      return (100.0 * ((totalReward/totalCost) - 1)).toFixed(2);
+   }
+
+   $.updateFeeInfo = function(f, p) {
+      if (f.MemPoolMean != undefined &&
+          f.BlockMean != undefined) {
+         var mean = f.MemPoolMean;
+         if (mean < f.BlockMean) mean = f.BlockMean;
+         $("#ticket-fee").text($.ceilFixed(mean, 4));
+         $("#last-block-mean").text($.ceilFixed(f.BlockMean, 4));
+         $("#mempool-mean").text($.ceilFixed(f.MemPoolMean, 4));
+         if (p.CurrentTicketPrice != undefined && p.Height != undefined) {
+           // reward in one month
+            $("#ticket-profit").text($.getProfit(mean, p.CurrentTicketPrice, p.Height) + "%");
+         }
+      }
+   }
 
    $.updatePrices = function(p) {
       if (p.CurrentTicketPrice != undefined) {
@@ -114,6 +150,7 @@ $(document).ready(function() {
                $.ticketPrices.CurrentTicketPrice = block.sbits;
             }
             $.updatePrices($.ticketPrices);
+            $.updateFeeInfo($.feeInfo, $.ticketPrices);
             break;
          case "estimatestakediff":
             $.ticketPrices.NextTicketPrice = data.result.expected;
@@ -122,6 +159,11 @@ $(document).ready(function() {
          case "getticketpoolvalue":
             $.ticketPrices.Locked = data.result;
             $.updatePrices($.ticketPrices);
+            break;
+         case "ticketfeeinfo":
+            $.feeInfo.MemPoolMean = data.result.feeinfomempool.mean;
+            $.feeInfo.BlockMean = data.result.feeinfoblocks[0].mean;
+            $.updateFeeInfo($.feeInfo, $.ticketPrices);
             break;
          }
       }
