@@ -25,6 +25,7 @@ $(document).ready(function() {
    $.getProfit = function(f, p, h) {
       var nextHeight = h + (12.0 * 24.0 * 30.0);
       var reward = Math.pow(100.0/101.0, Math.ceil(nextHeight / 6144.0) - 1) * BLOCK_REWARD * 0.06; 
+      reward = reward * 0.95; // removes 5% for pool fees
       // but the fee only applies to 539 bytes, not the full 1024 bytes, so...
       var effectiveFee = f * (540/1024);
       var totalCost = p + effectiveFee;
