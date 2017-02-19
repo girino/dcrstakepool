@@ -29,7 +29,7 @@ var pie = new d3pie("test1", {
 		"content": [
 			{
 				"label": "Missed",
-				"value": {{ .StakeInfo.Missed }},
+				"value": {{ sub .StakeInfo.Missed .StakeInfo.Expired }},
 				"color": "#fd714b"
 			},
 			{
