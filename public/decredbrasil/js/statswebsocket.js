@@ -36,8 +36,9 @@ $(document).ready(function() {
    $.updateFeeInfo = function(f, p) {
       if (f.MemPoolMean != undefined &&
           f.BlockMean != undefined) {
-         var mean = f.MemPoolMean;
+         var mean = 0.01; // starts with default 0.01 DCR
          if (mean < f.BlockMean) mean = f.BlockMean;
+         if (mean < f.MemPoolMean) mean = f.MemPoolMean;
          $("#ticket-fee").text($.ceilFixed(mean, 4));
          $("#last-block-mean").text($.ceilFixed(f.BlockMean, 4));
          $("#mempool-mean").text($.ceilFixed(f.MemPoolMean, 4));
@@ -145,7 +146,7 @@ $(document).ready(function() {
          case "getblock":
             var block = data.result;
             if ($.ticketPrices.Height == null 
-                  || $.ticketPrices.Height > block.height) {
+                  || $.ticketPrices.Height < block.height) {
                $.ticketPrices.Height = block.height;
                $.ticketPrices.PoolSize = block.poolsize;
                $.ticketPrices.CurrentTicketPrice = block.sbits;
