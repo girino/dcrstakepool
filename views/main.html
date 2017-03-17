@@ -25,7 +25,13 @@
 	{{if .User}}<li {{if .IsSettings }}class="active"{{end}}><a href="/settings">Settings</a></li>{{end}}
 	{{if .IsStatus}}<li class="active"><a href="/status">Status</a></li>{{end}}
 	{{if .User}}{{if .User.MultiSigAddress}}<li {{if .IsTickets }}class="active"{{end}}><a href="/tickets">Tickets</a></li>{{end}}{{end}}
-	<li><a href="https://goo.gl/eSq80h" tarket="_blank">Tutorial (pt_BR)</a></li>
+	<li class="dropdown">
+          <a class="dropdown-toggle" data-toggle="dropdown" href="#">Tutorial<span class="caret"></span></a>
+          <ul class="dropdown-menu nav navbar-nav" style="background-color: #0C1E3E;">
+		<li><a href="https://goo.gl/AZF8qo" target="_blank">English</a></li>
+		<li><a href="https://goo.gl/JgMRbW" target="_blank">Português</a></li>
+          </ul>
+        </li>
       </ul>
 {{if .User}}
       <ul class="nav navbar-nav navbar-right">
