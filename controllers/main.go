@@ -6,26 +6,28 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/decred/dcrd/blockchain/stake"
 	"github.com/decred/dcrd/chaincfg"
 	"github.com/decred/dcrd/dcrjson"
-	"github.com/decred/dcrstakepool/codes"
 	"github.com/decred/dcrstakepool/helpers"
 	"github.com/decred/dcrstakepool/models"
 	"github.com/decred/dcrstakepool/poolapi"
 	"github.com/decred/dcrstakepool/system"
 	"github.com/decred/dcrutil"
 	"github.com/decred/dcrutil/hdkeychain"
-	"github.com/decred/dcrwallet/waddrmgr"
+	"github.com/decred/dcrwallet/wallet/udb"
+	"github.com/go-gorp/gorp"
 	"github.com/haisum/recaptcha"
 	"github.com/zenazn/goji/web"
-	"github.com/go-gorp/gorp"
+
+	"google.golang.org/grpc/codes"
 )
 
 // disapproveBlockMask checks to see if the votebits have been set to No.
@@ -41,6 +43,11 @@ const signupEmailTemplate = "A request for an account for __URL__\r\n" +
 	"to verify your email address and finalize registration.\r\n\n"
 const signupEmailSubject = "Stake pool email verification"
 
+// MaxUsers is the maximum number of users supported by a stake pool.
+// This is an artificial limit and can be increased by adjusting the
+// ticket/fee address indexes above 10000.
+const MaxUsers = 10000
+
 // MainController is the wallet RPC controller type.  Its methods include the
 // route handlers.
 type MainController struct {
@@ -53,12 +60,13 @@ type MainController struct {
 	baseURL              string
 	closePool            bool
 	closePoolMsg         string
-	extPub               *hdkeychain.ExtendedKey
+	feeXpub              *hdkeychain.ExtendedKey
 	poolEmail            string
 	poolFees             float64
 	poolLink             string
 	params               *chaincfg.Params
 	rpcServers           *walletSvrManager
+	realIPHeader         string
 	recaptchaSecret      string
 	recaptchaSiteKey     string
 	smtpFrom             string
@@ -66,6 +74,9 @@ type MainController struct {
 	smtpUsername         string
 	smtpPassword         string
 	version              string
+	voteInfo             dcrjson.GetVoteInfoResult
+	voteVersion          uint32
+	votingXpub           *hdkeychain.ExtendedKey
 }
 
 func randToken() string {
@@ -77,40 +88,52 @@ func randToken() string {
 // Get the client's real IP address using the X-Real-IP header, or if that is
 // empty, http.Request.RemoteAddr. See the sample nginx.conf for using the
 // real_ip module to correctly set the X-Real-IP header.
-func getClientIP(r *http.Request) string {
-	getHost := func(ip string) string {
-		if strings.Contains(ip, ":") {
-			parts := strings.Split(ip, ":")
-			return parts[0]
+func getClientIP(r *http.Request, realIPHeader string) string {
+	// getHost returns the host portion of a string containing either a
+	// host:port formatted name or just a host.
+	getHost := func(hostPort string) string {
+		ip, _, err := net.SplitHostPort(hostPort)
+		if err != nil {
+			return hostPort
 		}
 		return ip
 	}
 
-	realIP := r.Header.Get("X-Real-IP")
-	realIP = getHost(realIP)
-
-	if realIP == "" {
-		log.Info(`"X-Real-IP" header invalid, using RemoteAddr instead`)
-		// If this somehow errors, just go with empty
-		realIP = getHost(r.RemoteAddr)
+	// If header not set, return RemoteAddr. Invalid hosts are replaced with "".
+	if realIPHeader == "" {
+		return getHost(r.RemoteAddr)
 	}
-
-	return realIP
+	return getHost(r.Header.Get(realIPHeader))
 }
 
 // NewMainController is the constructor for the entire controller routing.
 func NewMainController(params *chaincfg.Params, adminIPs []string,
 	APISecret string, APIVersionsSupported []int, baseURL string,
-	closePool bool, closePoolMsg string, extPubStr string, poolEmail string,
+	closePool bool, closePoolMsg string, feeXpubStr string, poolEmail string,
 	poolFees float64, poolLink string, recaptchaSecret string,
 	recaptchaSiteKey string, smtpFrom string,
 	smtpHost string, smtpUsername string, smtpPassword string, version string,
 	walletHosts []string, walletCerts []string, walletUsers []string,
-	walletPasswords []string, minServers int) (*MainController, error) {
+	walletPasswords []string, minServers int, realIPHeader string,
+	votingXpubStr string, voteInfo dcrjson.GetVoteInfoResult,
+	voteVersion uint32) (*MainController, error) {
+
 	// Parse the extended public key and the pool fees.
-	key, err := hdkeychain.NewKeyFromString(extPubStr)
+	feeKey, err := hdkeychain.NewKeyFromString(feeXpubStr)
 	if err != nil {
 		return nil, err
+	}
+	if !feeKey.IsForNet(params) {
+		return nil, fmt.Errorf("fee extended public key is for wrong network")
+	}
+
+	// Parse the extended public key for the voting addresses.
+	voteKey, err := hdkeychain.NewKeyFromString(votingXpubStr)
+	if err != nil {
+		return nil, err
+	}
+	if !voteKey.IsForNet(params) {
+		return nil, fmt.Errorf("voting extended public key is for wrong network")
 	}
 
 	rpcs, err := newWalletSvrManager(walletHosts, walletCerts, walletUsers, walletPasswords, minServers)
@@ -125,7 +148,7 @@ func NewMainController(params *chaincfg.Params, adminIPs []string,
 		baseURL:              baseURL,
 		closePool:            closePool,
 		closePoolMsg:         closePoolMsg,
-		extPub:               key,
+		feeXpub:              feeKey,
 		poolEmail:            poolEmail,
 		poolFees:             poolFees,
 		poolLink:             poolLink,
@@ -133,14 +156,29 @@ func NewMainController(params *chaincfg.Params, adminIPs []string,
 		recaptchaSecret:      recaptchaSecret,
 		recaptchaSiteKey:     recaptchaSiteKey,
 		rpcServers:           rpcs,
+		realIPHeader:         realIPHeader,
 		smtpFrom:             smtpFrom,
 		smtpHost:             smtpHost,
 		smtpUsername:         smtpUsername,
 		smtpPassword:         smtpPassword,
 		version:              version,
+		voteInfo:             voteInfo,
+		voteVersion:          voteVersion,
+		votingXpub:           voteKey,
 	}
 
 	return mc, nil
+}
+
+// getNetworkName will strip any suffix from a network name starting with
+// "testnet" (e.g. "testnet2"). This is primarily intended for the tickets page,
+// which generates block explorer links using a value set by the network string,
+// which is a problem since there is no testnet2.deced.org host.
+func (controller *MainController) getNetworkName() string {
+	if strings.HasPrefix(controller.params.Name, "testnet") {
+		return "testnet"
+	}
+	return controller.params.Name
 }
 
 // API is the main frontend that handles all API requests.
@@ -168,6 +206,8 @@ func (controller *MainController) API(c web.C, r *http.Request) *system.APIRespo
 		switch command {
 		case "address":
 			_, code, response, err = controller.APIAddress(c, r)
+		case "voting":
+			_, code, response, err = controller.APIVoting(c, r)
 		default:
 			return nil
 		}
@@ -191,11 +231,7 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 		return nil, codes.Unauthenticated, "address error", errors.New("invalid api token")
 	}
 
-	user := models.GetUserById(dbMap, c.Env["APIUserID"].(int64))
-
-	if controller.closePool {
-		return nil, codes.FailedPrecondition, "pool is closed", errors.New(controller.closePoolMsg)
-	}
+	user, _ := models.GetUserById(dbMap, c.Env["APIUserID"].(int64))
 
 	if len(user.UserPubKeyAddr) > 0 {
 		return nil, codes.AlreadyExists, "address error", errors.New("address already submitted")
@@ -299,7 +335,7 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 		return nil, codes.Unauthenticated, "purchaseinfo error", errors.New("invalid api token")
 	}
 
-	user := models.GetUserById(dbMap, c.Env["APIUserID"].(int64))
+	user, _ := models.GetUserById(dbMap, c.Env["APIUserID"].(int64))
 
 	if len(user.UserPubKeyAddr) == 0 {
 		return nil, codes.FailedPrecondition, "purchaseinfo error", errors.New("no address submitted")
@@ -310,6 +346,7 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 		PoolFees:      controller.poolFees,
 		Script:        user.MultiSigScript,
 		TicketAddress: user.MultiSigAddress,
+		VoteBits:      uint16(user.VoteBits),
 	}
 
 	return purchaseInfo, codes.OK, "purchaseinfo successfully retrieved", nil
@@ -349,6 +386,7 @@ func (controller *MainController) APIStats(c web.C,
 		APIVersionsSupported: controller.APIVersionsSupported,
 		BlockHeight:          gsi.BlockHeight,
 		Difficulty:           gsi.Difficulty,
+		Expired:              gsi.Expired,
 		Immature:             gsi.Immature,
 		Live:                 gsi.Live,
 		Missed:               trueMissed,
@@ -369,6 +407,41 @@ func (controller *MainController) APIStats(c web.C,
 	}
 
 	return stats, codes.OK, "stats successfully retrieved", nil
+}
+
+// APIVotingPost is the API version of VotingPost
+func (controller *MainController) APIVoting(c web.C, r *http.Request) ([]string, codes.Code, string, error) {
+	dbMap := controller.GetDbMap(c)
+
+	if c.Env["APIUserID"] == nil {
+		return nil, codes.Unauthenticated, "voting error", errors.New("invalid api token")
+	}
+
+	user, _ := models.GetUserById(dbMap, c.Env["APIUserID"].(int64))
+	oldVoteBits := user.VoteBits
+
+	vb := r.FormValue("VoteBits")
+	vbi, err := strconv.Atoi(vb)
+	if err != nil {
+		return nil, codes.InvalidArgument, "voting error", errors.New("unable to convert votebits to uint16")
+	}
+	userVoteBits := uint16(vbi)
+
+	if !IsValidVoteBits(userVoteBits, controller.voteInfo) {
+		return nil, codes.InvalidArgument, "voting error", errors.New("votebits invalid for current agendas")
+	}
+
+	user, err = helpers.UpdateVoteBitsByID(dbMap, user.Id, userVoteBits)
+	if err != nil {
+		return nil, codes.Internal, "voting error", errors.New("failed to update voting prefs in database")
+	}
+
+	// TODO should notify stakepoold via gRPC to update user/voting config
+
+	log.Infof("updated voteBits for user %d from %d to %d",
+		user.Id, oldVoteBits, userVoteBits)
+
+	return nil, codes.OK, "sucessfully updated voting preferences", nil
 }
 
 // SendMail sends an email with the passed data using the system's SMTP
@@ -410,58 +483,125 @@ func (controller *MainController) SendMail(emailaddress string, subject string, 
 // fees for an individual pool user.
 func (controller *MainController) FeeAddressForUserID(uid int) (dcrutil.Address,
 	error) {
-	if uint32(uid+1) > waddrmgr.MaxAddressesPerAccount {
+	if uint32(uid+1) > MaxUsers {
 		return nil, fmt.Errorf("bad uid index %v", uid)
 	}
 
-	addrs, err := waddrmgr.AddressesDerivedFromExtPub(uint32(uid), uint32(uid+1),
-		controller.extPub, waddrmgr.ExternalBranch, controller.params)
+	acctKey := controller.feeXpub
+	index := uint32(uid)
+
+	// Derive the appropriate branch key
+	branchKey, err := acctKey.Child(udb.ExternalBranch)
 	if err != nil {
 		return nil, err
 	}
 
-	return addrs[0], nil
+	key, err := branchKey.Child(index)
+	if err != nil {
+		return nil, err
+	}
+
+	addr, err := key.Address(controller.params)
+	if err != nil {
+		return nil, err
+	}
+
+	return addr, nil
+}
+
+// TicketAddressForUserID generates a unique ticket address per used ID for
+// generating the 1-of-2 multisig.
+func (controller *MainController) TicketAddressForUserID(uid int) (dcrutil.Address,
+	error) {
+	if uint32(uid+1) > MaxUsers {
+		return nil, fmt.Errorf("bad uid index %v", uid)
+	}
+
+	acctKey := controller.votingXpub
+	index := uint32(uid)
+
+	// Derive the appropriate branch key
+	branchKey, err := acctKey.Child(udb.ExternalBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := branchKey.Child(index)
+	if err != nil {
+		return nil, err
+	}
+
+	addr, err := key.Address(controller.params)
+	if err != nil {
+		return nil, err
+	}
+
+	return addr, nil
 }
 
 // RPCSync checks to ensure that the wallets are synced on startup.
-func (controller *MainController) RPCSync(dbMap *gorp.DbMap, skipVoteBitsSync bool) error {
+func (controller *MainController) RPCSync(dbMap *gorp.DbMap) error {
 	multisigScripts, err := models.GetAllCurrentMultiSigScripts(dbMap)
 	if err != nil {
 		return err
 	}
 
 	err = walletSvrsSync(controller.rpcServers, multisigScripts)
-	if err != nil {
-		return err
-	}
+	return err
+}
 
-	if !skipVoteBitsSync {
-		// TODO: Wait for wallets to sync, or schedule the vote bits sync somehow.
-		// For now, just skip full vote bits sync in favor of on-demand user's vote
-		// bits sync if the wallets are busy at this point.
+// CheckAndResetUserVoteBits reset users VoteBits if the VoteVersion has
+// changed or if the stored VoteBits are somehow invalid.
+func (controller *MainController) CheckAndResetUserVoteBits(dbMap *gorp.DbMap, voteVersion uint32, voteInfo dcrjson.GetVoteInfoResult) {
+	defaultVoteBits := uint16(1)
+	userMax := models.GetUserMax(dbMap)
+	for userid := int64(1); userid <= userMax; userid++ {
+		// may have gaps due to users deleted from the database
+		user, err := models.GetUserById(dbMap, userid)
+		if err != nil {
+			continue
+		}
 
-		// Allow sync to get going before attempting vote bits sync.
-		time.Sleep(2 * time.Second)
-
-		// Look for that -4 message from wallet that says: "the wallet is
-		// currently syncing to the best block, please try again later"
-		wsm := controller.rpcServers
-		err = wsm.CheckWalletsReady()
-		if err != nil /*strings.Contains(err.Error(), "try again later")*/ {
-			// If importscript is running, it will take a while.
-			log.Errorf("Wallets are syncing. Unable to initiate votebits sync: %v",
-				err)
-		} else {
-			// Sync vote bits for all tickets owned by the wallet
-			err = wsm.SyncVoteBits()
+		// Reset the user's voting preferences if the Vote Version changed
+		// since they no longer apply
+		if uint32(user.VoteBitsVersion) != voteVersion {
+			oldVoteBitsVersion := user.VoteBitsVersion
+			_, err := helpers.UpdateVoteBitsVersionByID(dbMap, userid, voteVersion)
 			if err != nil {
-				log.Error(err)
-				return err
+				log.Errorf("failed to update VoteBitsVersion for uid %v: %v",
+					userid, err)
+				continue
+			} else {
+				log.Infof("updated VoteBitsVersion from %v to %v for uid %v",
+					oldVoteBitsVersion, voteVersion, userid)
+			}
+			if uint16(user.VoteBits) != defaultVoteBits {
+				oldVoteBits := user.VoteBits
+				_, err = helpers.UpdateVoteBitsByID(dbMap, userid, defaultVoteBits)
+				if err != nil {
+					log.Errorf("failed to update VoteBits for uid %v: %v",
+						userid, err)
+				} else {
+					log.Infof("updated VoteBits from %v to %v for uid %v",
+						oldVoteBits, defaultVoteBits, userid)
+				}
+			}
+		} else {
+			// Validate that the votebits are valid for the agendas of the current
+			// vote version
+			if !IsValidVoteBits(uint16(user.VoteBits), voteInfo) {
+				oldVoteBits := user.VoteBits
+				_, err := helpers.UpdateVoteBitsByID(dbMap, userid, defaultVoteBits)
+				if err != nil {
+					log.Errorf("failed to reset invalid VoteBits for uid %v: %v",
+						userid, err)
+				} else {
+					log.Infof("reset invalid VoteBits from %v to %v for uid %v",
+						oldVoteBits, defaultVoteBits, userid)
+				}
 			}
 		}
 	}
-
-	return nil
 }
 
 // RPCStart starts the connected rpcServers.
@@ -506,7 +646,7 @@ func (controller *MainController) Address(c web.C, r *http.Request) (string, int
 	}
 
 	c.Env["IsAddress"] = true
-	c.Env["Network"] = controller.params.Name
+	c.Env["Network"] = controller.getNetworkName()
 
 	c.Env["Flash"] = session.Flashes("address")
 	widgets := controller.Parse(t, "address", c.Env)
@@ -520,21 +660,16 @@ func (controller *MainController) Address(c web.C, r *http.Request) (string, int
 // AddressPost is address form submit route.
 func (controller *MainController) AddressPost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
-	remoteIP := getClientIP(r)
-
-	// User may have a session so error out here as well.
-	if controller.closePool {
-		session.AddFlash(controller.closePoolMsg, "address")
-		return controller.Address(c, r)
-	}
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if session.Values["UserId"] == nil {
 		return "/", http.StatusSeeOther
 	}
+	uid64 := session.Values["UserId"].(int64)
 
 	// Only accept address if user does not already have a PubKeyAddr set.
 	dbMap := controller.GetDbMap(c)
-	user := models.GetUserById(dbMap, session.Values["UserId"].(int64))
+	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 	if len(user.UserPubKeyAddr) > 0 {
 		session.AddFlash("Stake pool is currently limited to one address per account", "address")
 		return controller.Address(c, r)
@@ -567,14 +702,12 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return controller.Address(c, r)
 	}
 
-	// Get new address from pool wallets
-	if controller.RPCIsStopped() {
-		return "/error", http.StatusSeeOther
-	}
-	pooladdress, err := controller.rpcServers.GetNewAddress()
+	// Get the ticket address for this user
+	pooladdress, err := controller.TicketAddressForUserID(int(uid64))
 	if err != nil {
-		controller.handlePotentialFatalError("GetNewAddress", err)
-		return "/error", http.StatusSeeOther
+		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
+		session.AddFlash("Unable to derive ticket address", "address")
+		return controller.Address(c, r)
 	}
 
 	// From new address (pkh), get pubkey address
@@ -585,6 +718,12 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	if err != nil {
 		controller.handlePotentialFatalError("ValidateAddress pooladdress", err)
 		return "/error", http.StatusSeeOther
+	}
+	if !poolValidateAddress.IsMine {
+		log.Errorf("unable to validate ismine for pool ticket addr: %s",
+			err.Error())
+		session.AddFlash("Unable to validate pool ticket address", "address")
+		return controller.Address(c, r)
 	}
 	poolPubKeyAddr := poolValidateAddress.PubKeyAddr
 
@@ -631,11 +770,11 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	}
 
 	// Get the pool fees address for this user
-	uid64 := session.Values["UserId"].(int64)
 	userFeeAddr, err := controller.FeeAddressForUserID(int(uid64))
 	if err != nil {
-		log.Warnf("unexpected error deriving pool addr: %s", err.Error())
-		return "/error", http.StatusSeeOther
+		log.Errorf("unexpected error deriving fee addr: %s", err.Error())
+		session.AddFlash("Unable to derive fee address", "address")
+		return controller.Address(c, r)
 	}
 
 	// Update the user's DB entry with multisig, user and pool pubkey
@@ -844,7 +983,7 @@ func (controller *MainController) PasswordResetPost(c web.C, r *http.Request) (s
 	if err != nil {
 		session.AddFlash("Invalid Email", "passwordresetError")
 	} else {
-		remoteIP := getClientIP(r)
+		remoteIP := getClientIP(r, controller.realIPHeader)
 
 		log.Infof("PasswordReset POST from %v, email %v", remoteIP,
 			user.Email)
@@ -923,7 +1062,7 @@ func (controller *MainController) PasswordUpdate(c web.C, r *http.Request) (stri
 func (controller *MainController) PasswordUpdatePost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
 	dbMap := controller.GetDbMap(c)
-	remoteIP := getClientIP(r)
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	// validate that the token is set and not expired.
 	token := r.URL.Query().Get("t")
@@ -996,7 +1135,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 		return "/", http.StatusSeeOther
 	}
 
-	user := models.GetUserById(dbMap, session.Values["UserId"].(int64))
+	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 
 	// Generate an API Token for the user on demand if one does not exist and
 	// refresh the user's data before displaying it.
@@ -1008,7 +1147,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 			log.Errorf("could not set API Token for UserId %v", user.Id)
 		}
 
-		user = models.GetUserById(dbMap, session.Values["UserId"].(int64))
+		user, _ = models.GetUserById(dbMap, session.Values["UserId"].(int64))
 	}
 
 	t := controller.GetTemplate(c)
@@ -1036,7 +1175,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
 	dbMap := controller.GetDbMap(c)
-	remoteIP := getClientIP(r)
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if session.Values["UserId"] == nil {
 		return "/", http.StatusSeeOther
@@ -1187,7 +1326,7 @@ func (controller *MainController) SignInPost(c web.C, r *http.Request) (string, 
 
 	session := controller.GetSession(c)
 	dbMap := controller.GetDbMap(c)
-	remoteIP := getClientIP(r)
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	// Validate email and password combination.
 	user, err := helpers.Login(dbMap, email, password)
@@ -1202,17 +1341,6 @@ func (controller *MainController) SignInPost(c web.C, r *http.Request) (string, 
 	if user.EmailVerified == 0 {
 		session.AddFlash("You must validate your email address", "auth")
 		return controller.SignIn(c, r)
-	}
-
-	// If pool is closed and user has not yet provided a pubkey address, do not
-	// allow login.
-	if controller.closePool {
-		if len(user.UserPubKeyAddr) == 0 {
-			session.AddFlash(controller.closePoolMsg, "auth")
-			c.Env["IsClosed"] = true
-			c.Env["ClosePoolMsg"] = controller.closePoolMsg
-			return controller.SignIn(c, r)
-		}
 	}
 
 	session.Values["UserId"] = user.Id
@@ -1268,7 +1396,7 @@ func (controller *MainController) SignUpPost(c web.C, r *http.Request) (string, 
 	}
 
 	session := controller.GetSession(c)
-	remoteIP := getClientIP(r)
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	email, password, passwordRepeat := r.FormValue("email"),
 		r.FormValue("password"), r.FormValue("passwordrepeat")
@@ -1305,10 +1433,12 @@ func (controller *MainController) SignUpPost(c web.C, r *http.Request) (string, 
 
 	token := randToken()
 	user = &models.User{
-		Username:      email,
-		Email:         email,
-		EmailToken:    token,
-		EmailVerified: 0,
+		Username:        email,
+		Email:           email,
+		EmailToken:      token,
+		EmailVerified:   0,
+		VoteBits:        1,
+		VoteBitsVersion: int64(controller.voteVersion),
 	}
 	user.HashPassword(password)
 
@@ -1332,6 +1462,8 @@ func (controller *MainController) SignUpPost(c web.C, r *http.Request) (string, 
 	} else {
 		session.AddFlash("A verification email has been sent to "+email, "signupSuccess")
 	}
+
+	// TODO should notify stakepoold via gRPC to update user/voting config
 
 	return controller.SignUp(c, r)
 }
@@ -1368,6 +1500,13 @@ func (controller *MainController) Stats(c web.C, r *http.Request) (string, int) 
 	c.Env["UserCount"] = userCount
 	c.Env["UserCountActive"] = userCountActive
 
+        var trueMissed uint32
+        var propMissed float64
+        trueMissed = gsi.Missed - gsi.Expired
+        propMissed = float64(trueMissed) / float64(gsi.Voted)
+	gsi.Missed = trueMissed
+	gsi.ProportionMissed = propMissed
+
 	widgets := controller.Parse(t, "stats", c.Env)
 	c.Env["Content"] = template.HTML(widgets)
 
@@ -1379,7 +1518,7 @@ func (controller *MainController) Status(c web.C, r *http.Request) (string, int)
 
 	// Confirm that the incoming IP address is an approved
 	// admin IP as set in config.
-	remoteIP := getClientIP(r)
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if !stringSliceContains(controller.adminIPs, remoteIP) {
 		return "/error", http.StatusSeeOther
@@ -1392,14 +1531,11 @@ func (controller *MainController) Status(c web.C, r *http.Request) (string, int)
 	}
 
 	type WalletInfoPage struct {
-		Connected         bool
-		DaemonConnected   bool
-		Unlocked          bool
-		TicketMaxPrice    float64
-		BalanceToMaintain float64
-		StakeMining       bool
+		Connected       bool
+		DaemonConnected bool
+		Unlocked        bool
 	}
-	walletPageInfo := make([]WalletInfoPage, len(walletInfo), len(walletInfo))
+	walletPageInfo := make([]WalletInfoPage, len(walletInfo))
 	connectedWallets := 0
 	for i, v := range walletInfo {
 		// If something is nil in the slice means it is disconnected.
@@ -1417,18 +1553,15 @@ func (controller *MainController) Status(c web.C, r *http.Request) (string, int)
 		// Wallet has been successfully queried.
 		connectedWallets++
 		walletPageInfo[i] = WalletInfoPage{
-			Connected:         true,
-			DaemonConnected:   v.DaemonConnected,
-			Unlocked:          v.Unlocked,
-			TicketMaxPrice:    v.TicketMaxPrice,
-			BalanceToMaintain: v.BalanceToMaintain,
-			StakeMining:       v.StakeMining,
+			Connected:       true,
+			DaemonConnected: v.DaemonConnected,
+			Unlocked:        v.Unlocked,
 		}
 	}
 
 	// Depending on how many wallets have been detected update RPCStatus.
 	// Admins can then use to monitor this page periodically and check status.
-	rpcstatus := "Unknown"
+	var rpcstatus string
 	allWallets := len(walletInfo)
 
 	if connectedWallets == allWallets {
@@ -1477,7 +1610,6 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	type TicketInfoLive struct {
 		Ticket       string
 		TicketHeight uint32
-		VoteBits     uint16
 	}
 
 	ticketInfoInvalid := map[int]TicketInfoInvalid{}
@@ -1491,19 +1623,19 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
-	remoteIP := getClientIP(r)
+	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if session.Values["UserId"] == nil {
 		return "/", http.StatusSeeOther
 	}
 
 	c.Env["IsTickets"] = true
-	c.Env["Network"] = controller.params.Name
+	c.Env["Network"] = controller.getNetworkName()
 	c.Env["PoolFees"] = controller.poolFees
 	c.Env["Title"] = "Decred Stake Pool - Tickets"
 
 	dbMap := controller.GetDbMap(c)
-	user := models.GetUserById(dbMap, session.Values["UserId"].(int64))
+	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 
 	if user.MultiSigAddress == "" {
 		c.Env["Error"] = "No multisig data has been generated"
@@ -1570,51 +1702,19 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	if err != nil {
 		// Render page with message to try again later
 		log.Infof("RPC StakePoolUserInfo failed: %v", err)
-		session.AddFlash("Unable to retreive stake pool user info.", "main")
+		session.AddFlash("Unable to retrieve stake pool user info", "main")
 		c.Env["Flash"] = session.Flashes("main")
 		return controller.Parse(t, "main", c.Env), http.StatusInternalServerError
 	}
 
 	// If the user has tickets, get their info
 	if spui != nil && len(spui.Tickets) > 0 {
-		// Only get or set votebits for live tickets
-		liveTicketHashes, err := w.GetUnspentUserTickets(multisig)
-		if err != nil {
-			return "/error?r=/tickets", http.StatusSeeOther
-		}
-
-		gtvb, err := w.GetTicketsVoteBits(liveTicketHashes)
-		if err != nil {
-			if err.Error() == "non equivalent votebits returned" {
-				// Launch a goroutine to repair these tickets vote bits
-				go w.SyncTicketsVoteBits(liveTicketHashes)
-				responseHeaderMap["Retry-After"] = "60"
-				// Render page with message to try again later
-				session.AddFlash("Detected mismatching vote bits.  "+
-					"Ticket data is now resyncing.  Please try again after a "+
-					"few minutes.", "tickets")
-				c.Env["Flash"] = session.Flashes("tickets")
-				c.Env["Content"] = template.HTML(controller.Parse(t, "tickets", c.Env))
-				// Return with a 503 error indicating when to retry
-				return controller.Parse(t, "main", c.Env), http.StatusServiceUnavailable
-			}
-
-			log.Infof("GetTicketsVoteBits failed %v", err)
-			return "/error?r=/tickets", http.StatusSeeOther
-		}
-
-		voteBitMap := make(map[string]uint16)
-		for i := range liveTicketHashes {
-			voteBitMap[liveTicketHashes[i].String()] = gtvb.VoteBitsList[i].VoteBits
-		}
-
 		for idx, ticket := range spui.Tickets {
 			switch ticket.Status {
 			case "live":
 				ticketInfoLive[idx] = TicketInfoLive{
 					Ticket:       ticket.Ticket,
 					TicketHeight: ticket.TicketHeight,
-					VoteBits:     voteBitMap[ticket.Ticket], //gtvbAll.VoteBitsList[idx].VoteBits,
 				}
 			case "missed":
 				ticketInfoMissed[idx] = TicketInfoHistoric{
@@ -1649,121 +1749,84 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	return controller.Parse(t, "main", c.Env), http.StatusOK
 }
 
-// TicketsPost form submit route.
-func (controller *MainController) TicketsPost(c web.C, r *http.Request) (string, int) {
-	w := controller.rpcServers
-
-	// If already processing let /tickets handle this
-	if atomic.LoadInt32(&w.ticketDataBlocker) != 0 {
-		return "/tickets", http.StatusSeeOther
-	}
-
-	chooseallow := r.FormValue("chooseallow")
-	var voteBits = uint16(0)
-
-	if chooseallow == "2" {
-		// pool policy and approve.
-		// TODO: set policy somewhere else and make it available to /tickets page.
-		voteBits = uint16(1)
-		voteBits |= approveBlockMask
-	} else {
-		if chooseallow == "1" {
-			voteBits = approveBlockMask
-		} else {
-			voteBits = disapproveBlockMask
-		}
-	}
-
-	// Look up user, and try very hard to avoid a panic
+// Voting renders the voting page.
+func (controller *MainController) Voting(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
 	dbMap := controller.GetDbMap(c)
-	id, ok := session.Values["UserId"].(int64)
-	if !ok {
-		log.Error("No valid UserID")
+
+	if session.Values["UserId"] == nil {
+		return "/", http.StatusSeeOther
 	}
 
-	remoteIP := getClientIP(r)
+	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 
-	user := models.GetUserById(dbMap, id)
-	if user == nil {
-		log.Error("Unable to find user with ID", id)
+	t := controller.GetTemplate(c)
+
+	choicesSelected := choicesForAgendas(uint16(user.VoteBits), controller.voteInfo)
+
+	for k, v := range choicesSelected {
+		strk := strconv.Itoa(k)
+		c.Env["Agenda"+strk+"Selected"] = v
+	}
+	c.Env["Agendas"] = controller.voteInfo.Agendas
+	c.Env["FlashError"] = session.Flashes("votingError")
+	c.Env["FlashSuccess"] = session.Flashes("votingSuccess")
+	c.Env["IsVoting"] = true
+	c.Env["User"] = user
+	c.Env["VoteVersion"] = controller.voteVersion
+
+	widgets := controller.Parse(t, "voting", c.Env)
+	c.Env["Title"] = "Decred Stake Pool - Voting"
+	c.Env["Content"] = template.HTML(widgets)
+
+	return controller.Parse(t, "main", c.Env), http.StatusOK
+}
+
+// VotingPost form submit route.
+func (controller *MainController) VotingPost(c web.C, r *http.Request) (string, int) {
+	session := controller.GetSession(c)
+	dbMap := controller.GetDbMap(c)
+
+	if session.Values["UserId"] == nil {
+		return "/", http.StatusSeeOther
 	}
 
-	log.Infof("Tickets POST from %v, multisig %v", remoteIP,
-		user.MultiSigAddress)
+	var generatedVoteBits uint16
 
-	if user.MultiSigAddress == "" {
-		log.Info("Multisigaddress empty")
-		return "/error?r=/tickets", http.StatusSeeOther
+	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
+
+	// last block valid
+	generatedVoteBits |= 1
+
+	for i := range controller.voteInfo.Agendas {
+		agendaVal := r.FormValue("agenda" + strconv.Itoa(i))
+		avi, err := strconv.Atoi(agendaVal)
+		if err != nil {
+			session.AddFlash("invalid agenda choice", "votingError")
+			return "/voting", http.StatusSeeOther
+		}
+		generatedVoteBits |= uint16(avi)
 	}
 
-	multisig, err := dcrutil.DecodeAddress(user.MultiSigAddress, controller.params)
+	isValid := IsValidVoteBits(generatedVoteBits, controller.voteInfo)
+	if !isValid {
+		session.AddFlash("generated votebits were invalid", "votingError")
+		return "/voting", http.StatusSeeOther
+	}
+
+	oldVoteBits := user.VoteBits
+	user, err := helpers.UpdateVoteBitsByID(dbMap, user.Id, generatedVoteBits)
 	if err != nil {
-		log.Infof("Invalid address %v in database: %v", user.MultiSigAddress, err)
-		return "/error?r=/tickets", http.StatusSeeOther
+		session.AddFlash("unable to save new voting preferences", "votingError")
+		return "/voting", http.StatusSeeOther
 	}
 
-	if controller.RPCIsStopped() {
-		return "/error", http.StatusSeeOther
-	}
+	// TODO should notify stakepoold via gRPC to update user/voting config
 
-	outPath := "/tickets"
-	status := http.StatusSeeOther
-
-	// Set this off in a goroutine
-	// TODO: error on channel
-	go func() {
-		// write lock
-		w.ticketDataLock.Lock()
-		defer w.ticketDataLock.Unlock()
-
-		var err error
-		defer func() { w.setVoteBitsResyncChan <- err }()
-
-		if !atomic.CompareAndSwapInt32(&w.ticketDataBlocker, 0, 1) {
-			return
-		}
-		defer atomic.StoreInt32(&w.ticketDataBlocker, 0)
-
-		// Only get or set votebits for live tickets
-		liveTicketHashes, err := w.GetUnspentUserTickets(multisig)
-		if err != nil {
-			return
-		}
-
-		if len(liveTicketHashes) == 0 {
-			return
-		}
-
-		log.Infof("Started setting of vote bits for %d tickets.",
-			len(liveTicketHashes))
-
-		vbs := make([]stake.VoteBits, len(liveTicketHashes))
-		for i := 0; i < len(liveTicketHashes); i++ {
-			vbs[i] = stake.VoteBits{Bits: voteBits}
-			//vbs[i].Bits = voteBits
-		}
-
-		err = controller.rpcServers.SetTicketsVoteBits(liveTicketHashes, vbs)
-		if err != nil {
-			if err == ErrSetVoteBitsCoolDown {
-				return
-			}
-			controller.handlePotentialFatalError("SetTicketVoteBits", err)
-			return
-		}
-
-		log.Infof("Completed setting of vote bits for %d tickets.",
-			len(liveTicketHashes))
-
-		return
-	}()
-
-	// Like a timeout, give the sync some time to process, otherwise /tickets
-	// will show a message that it is still syncing.
-	time.Sleep(3 * time.Second)
-
-	return outPath, status
+	log.Infof("updated voteBits for user %d from %d to %d",
+		user.Id, oldVoteBits, generatedVoteBits)
+	session.AddFlash("successfully updated voting preferences", "votingSuccess")
+	return "/voting", http.StatusSeeOther
 }
 
 // Logout the user.
@@ -1773,6 +1836,56 @@ func (controller *MainController) Logout(c web.C, r *http.Request) (string, int)
 	session.Values["UserId"] = nil
 
 	return "/", http.StatusSeeOther
+}
+
+func choicesForAgendas(userVoteBits uint16, voteInfo dcrjson.GetVoteInfoResult) map[int]uint16 {
+	choicesSelected := make(map[int]uint16)
+
+	for i := range voteInfo.Agendas {
+		masked := userVoteBits & voteInfo.Agendas[i].Mask
+		var valid bool
+		for choice := range voteInfo.Agendas[i].Choices {
+			if masked == voteInfo.Agendas[i].Choices[choice].Bits {
+				valid = true
+				choicesSelected[i] = voteInfo.Agendas[i].Choices[choice].Bits
+			}
+		}
+		if !valid {
+			choicesSelected[i] = uint16(0)
+		}
+	}
+
+	return choicesSelected
+}
+
+// IsValidVoteBits returns an error if voteBits are not valid for agendas
+func IsValidVoteBits(userVoteBits uint16, voteInfo dcrjson.GetVoteInfoResult) bool {
+	// All blocks valid is OK
+	if userVoteBits == 1 {
+		return true
+	}
+
+	// check if last block invalid is set at all
+	if userVoteBits&1 == 0 {
+		return false
+	}
+
+	usedBits := uint16(1)
+	for i := range voteInfo.Agendas {
+		masked := userVoteBits & voteInfo.Agendas[i].Mask
+		var valid bool
+		for choice := range voteInfo.Agendas[i].Choices {
+			usedBits |= voteInfo.Agendas[i].Choices[choice].Bits
+			if masked == voteInfo.Agendas[i].Choices[choice].Bits {
+				valid = true
+			}
+		}
+		if !valid {
+			return false
+		}
+	}
+
+	return userVoteBits&^usedBits == 0
 }
 
 func stringSliceContains(s []string, e string) bool {

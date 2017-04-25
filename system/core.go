@@ -11,12 +11,12 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/Masterminds/sprig"
-	"github.com/decred/dcrstakepool/codes"
 	"github.com/decred/dcrstakepool/models"
+	"github.com/go-gorp/gorp"
 	"github.com/gorilla/sessions"
 	"github.com/zenazn/goji/web"
-	"github.com/go-gorp/gorp"
+
+	"google.golang.org/grpc/codes"
 )
 
 // CSRF token constants
@@ -92,7 +92,7 @@ func (application *Application) LoadTemplates(templatePath string) error {
 		if err != nil {
 			return err
 		}
-		if f.IsDir() != true && strings.HasSuffix(f.Name(), ".html") {
+		if !f.IsDir() && strings.HasSuffix(f.Name(), ".html") {
 			templates = append(templates, path)
 		}
 		return nil
@@ -106,8 +106,7 @@ func (application *Application) LoadTemplates(templatePath string) error {
 	// Since template.Must panics with non-nil error, it is much more
 	// informative to pass the error to the caller (runMain) to log it and exit
 	// gracefully.
-	t := template.New("dcrstakepool").Funcs(sprig.FuncMap())
-	httpTemplates, err := t.ParseFiles(templates...)
+	httpTemplates, err := template.ParseFiles(templates...)
 	if err != nil {
 		return err
 	}
