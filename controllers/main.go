@@ -365,6 +365,13 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 	return purchaseInfo, codes.OK, "purchaseinfo successfully retrieved", nil
 }
 
+func recalculateMissed(missed uint32, expired uint32, voted uint32) (uint32, float64) {
+	trueMissed := missed - expired
+	propMissed := float64(trueMissed) / float64(voted+missed)
+
+	return trueMissed, propMissed
+}
+
 // APIStats is an API version of the stats page
 func (controller *MainController) APIStats(c web.C,
 	r *http.Request) (*poolapi.Stats, codes.Code, string, error) {
@@ -389,10 +396,7 @@ func (controller *MainController) APIStats(c web.C,
 		poolStatus = "Open"
 	}
 
-	var trueMissed uint32
-	var propMissed float64
-	trueMissed = gsi.Missed - gsi.Expired
-	propMissed = float64(trueMissed) / float64(gsi.Voted)
+	trueMissed, propMissed := recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
 
 	stats := &poolapi.Stats{
 		AllMempoolTix:        gsi.AllMempoolTix,
@@ -1539,12 +1543,7 @@ func (controller *MainController) Stats(c web.C, r *http.Request) (string, int) 
 	c.Env["UserCount"] = userCount
 	c.Env["UserCountActive"] = userCountActive
 
-        var trueMissed uint32
-        var propMissed float64
-        trueMissed = gsi.Missed - gsi.Expired
-        propMissed = float64(trueMissed) / float64(gsi.Voted)
-	gsi.Missed = trueMissed
-	gsi.ProportionMissed = propMissed
+	gsi.Missed, gsi.ProportionMissed = recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
 
 	widgets := controller.Parse(t, "stats", c.Env)
 	c.Env["Content"] = template.HTML(widgets)
