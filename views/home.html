@@ -4,6 +4,7 @@
     <div class="col-xs-15 col-md-8 col-lg-8 notication-col center-block">
     </div>
     <div class="col-sm-12 col-md-10 col-lg-8 center-block">
+{{if .IsClosed }}<div class="well well-notification  green-notification">{{.ClosePoolMsg}}</div>{{end}}
        <div class="panel panel-default panel-control">
            <div class="panel-body">
              <h1>Current ticket price: <span id="ticket-price">...</span> DCR. <!-- <br/>We recommend <span id="ticket-recommend">...</span></h1> -->
