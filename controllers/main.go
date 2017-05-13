@@ -271,7 +271,7 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 	// Get the ticket address for this user
 	pooladdress, err := controller.TicketAddressForUserID(int(c.Env["APIUserID"].(int64)))
 	if err != nil {
-		log.Errorf("unable to derive ticket address: %v", err)
+		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
@@ -281,8 +281,8 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 	if !poolValidateAddress.IsMine {
-		log.Errorf("unable to validate ismine for pool ticket address: %s",
-			pooladdress.String())
+		log.Errorf("unable to validate ismine for pool ticket addr: %s",
+			err.Error())
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
@@ -369,6 +369,8 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 func recalculateMissed(missed uint32, expired uint32, voted uint32) (uint32, float64) {
 	trueMissed := missed - expired
 	propMissed := float64(trueMissed) / float64(voted+missed)
+
+	//log.Infof("Missed: %v %v", trueMissed, propMissed)
 
 	return trueMissed, propMissed
 }
@@ -749,7 +751,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	// Get the ticket address for this user
 	pooladdress, err := controller.TicketAddressForUserID(int(uid64))
 	if err != nil {
-		log.Errorf("unable to derive ticket address: %v", err)
+		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
 		session.AddFlash("Unable to derive ticket address", "address")
 		return controller.Address(c, r)
 	}
@@ -764,8 +766,8 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return "/error", http.StatusSeeOther
 	}
 	if !poolValidateAddress.IsMine {
-		log.Errorf("unable to validate ismine for pool ticket address: %s",
-			pooladdress.String())
+		log.Errorf("unable to validate ismine for pool ticket addr: %s",
+			err.Error())
 		session.AddFlash("Unable to validate pool ticket address", "address")
 		return controller.Address(c, r)
 	}
@@ -1544,7 +1546,9 @@ func (controller *MainController) Stats(c web.C, r *http.Request) (string, int) 
 	c.Env["UserCount"] = userCount
 	c.Env["UserCountActive"] = userCountActive
 
-	gsi.Missed, gsi.ProportionMissed = recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
+	trueMissed, propMissed := recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
+	c.Env["Missed"] = trueMissed
+	c.Env["ProportionMissed"] = propMissed
 
 	widgets := controller.Parse(t, "stats", c.Env)
 	c.Env["Content"] = template.HTML(widgets)
