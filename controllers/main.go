@@ -11,7 +11,6 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/decred/dcrd/chaincfg"
@@ -1577,6 +1576,7 @@ func (controller *MainController) Status(c web.C, r *http.Request) (string, int)
 		Connected       bool
 		DaemonConnected bool
 		Unlocked        bool
+		EnableVoting    bool
 	}
 	walletPageInfo := make([]WalletInfoPage, len(walletInfo))
 	connectedWallets := 0
@@ -1657,6 +1657,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 
 	ticketInfoInvalid := map[int]TicketInfoInvalid{}
 	ticketInfoLive := map[int]TicketInfoLive{}
+	ticketInfoExpired := map[int]TicketInfoHistoric{}
 	ticketInfoMissed := map[int]TicketInfoHistoric{}
 	ticketInfoVoted := map[int]TicketInfoHistoric{}
 
@@ -1702,45 +1703,6 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	w := controller.rpcServers
 	// TODO: Tell the user if there is a cool-down
 
-	// Attempt a "TryLock" so the page won't block
-
-	// select {
-	// case <-w.ticketTryLock:
-	// 	w.ticketTryLock <- nil
-	// 	responseHeaderMap["Retry-After"] = "60"
-	// 	c.Env["Content"] = template.HTML("Ticket data resyncing.  Please try again later.")
-	// 	return controller.Parse(t, "main", c.Env), http.StatusProcessing
-	// default:
-	// }
-
-	if atomic.LoadInt32(&w.ticketDataBlocker) != 0 {
-		// with HTTP 102 we can specify an estimated time
-		responseHeaderMap["Retry-After"] = "60"
-		// Render page with messgae to try again later
-		//c.Env["Content"] = template.HTML("Ticket data resyncing.  Please try again later.")
-		session.AddFlash("Ticket data now resyncing. Please try again later.", "tickets-warning")
-		c.Env["FlashWarn"] = session.Flashes("tickets-warning")
-		c.Env["Content"] = template.HTML(controller.Parse(t, "tickets", c.Env))
-		return controller.Parse(t, "main", c.Env), http.StatusOK
-	}
-
-	// Vote bits sync is not running, but we also don't want a sync process
-	// starting. Note that the sync process locks this mutex before setting the
-	// atomic, so this shouldn't block.
-	w.ticketDataLock.RLock()
-	defer w.ticketDataLock.RUnlock()
-
-	widgets := controller.Parse(t, "tickets", c.Env)
-
-	// TODO: how could this happen?
-	if err != nil {
-		log.Info(err)
-		widgets = controller.Parse(t, "tickets", c.Env)
-		c.Env["Content"] = template.HTML(widgets)
-		return controller.Parse(t, "main", c.Env), http.StatusOK
-	}
-
-	// spui := new(dcrjson.StakePoolUserInfoResult)
 	spui, err := w.StakePoolUserInfo(multisig)
 	if err != nil {
 		// Render page with message to try again later
@@ -1758,6 +1720,12 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 				ticketInfoLive[idx] = TicketInfoLive{
 					Ticket:       ticket.Ticket,
 					TicketHeight: ticket.TicketHeight,
+				}
+			case "expired":
+				ticketInfoExpired[idx] = TicketInfoHistoric{
+					Ticket:        ticket.Ticket,
+					SpentByHeight: ticket.SpentByHeight,
+					TicketHeight:  ticket.TicketHeight,
 				}
 			case "missed":
 				ticketInfoMissed[idx] = TicketInfoHistoric{
@@ -1782,9 +1750,10 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 
 	c.Env["TicketsInvalid"] = ticketInfoInvalid
 	c.Env["TicketsLive"] = ticketInfoLive
+	c.Env["TicketsExpired"] = ticketInfoExpired
 	c.Env["TicketsMissed"] = ticketInfoMissed
 	c.Env["TicketsVoted"] = ticketInfoVoted
-	widgets = controller.Parse(t, "tickets", c.Env)
+	widgets := controller.Parse(t, "tickets", c.Env)
 
 	c.Env["Content"] = template.HTML(widgets)
 	c.Env["Flash"] = session.Flashes("tickets")
