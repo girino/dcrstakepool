@@ -42,6 +42,7 @@ const (
 	defaultRecaptchaSitekey = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
 	defaultSMTPHost         = ""
 	defaultMinServers       = 2
+	defaultMaxVotedAge      = 8640
 )
 
 var (
@@ -49,8 +50,6 @@ var (
 	defaultConfigFile   = filepath.Join(dcrstakepoolHomeDir, defaultConfigFilename)
 	defaultDataDir      = filepath.Join(dcrstakepoolHomeDir, defaultDataDirname)
 	defaultLogDir       = filepath.Join(dcrstakepoolHomeDir, defaultLogDirname)
-	defaultRPCKeyFile   = filepath.Join(dcrstakepoolHomeDir, "rpc.key")
-	defaultRPCCertFile  = filepath.Join(dcrstakepoolHomeDir, "rpc.cert")
 )
 
 // runServiceCommand is only set to a real function on Windows.  It is used
@@ -107,6 +106,7 @@ type config struct {
 	AdminIPs           []string `long:"adminips" description:"Expected admin host"`
 	MinServers         int      `long:"minservers" description:"Minimum number of wallets connected needed to avoid errors"`
 	EnableStakepoold   bool     `long:"enablestakepoold" description:"Enable communication with stakepoold"`
+	MaxVotedAge        int64    `long:"maxvotedage" description:"Maximum vote age (blocks since vote) to include in voted tickets table"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service
@@ -304,6 +304,7 @@ func loadConfig() (*config, []string, error) {
 		SMTPHost:         defaultSMTPHost,
 		Version:          version(),
 		MinServers:       defaultMinServers,
+		MaxVotedAge:      defaultMaxVotedAge,
 	}
 
 	// Service options which are only added on Windows.
@@ -582,13 +583,6 @@ func loadConfig() (*config, []string, error) {
 	}
 
 	if cfg.EnableStakepoold {
-		if activeNetParams.Name == "mainnet" {
-			str := "%s: enablestakepoold is not ready for production"
-			err := fmt.Errorf(str, funcName)
-			fmt.Fprintln(os.Stderr, err)
-			return nil, nil, err
-		}
-
 		if len(cfg.StakepooldHosts) == 0 {
 			str := "%s: stakepooldhosts is not set in config"
 			err := fmt.Errorf(str, funcName)
