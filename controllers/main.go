@@ -362,7 +362,10 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 }
 
 func recalculateMissed(missed uint32, expired uint32, voted uint32) (uint32, float64) {
-	trueMissed := missed - expired
+	trueMissed := missed;
+	if (missed >= expired) {
+		trueMissed = (missed - expired);
+	}
 	propMissed := float64(trueMissed) / float64(voted+missed)
 
 	//log.Infof("Missed: %v %v", trueMissed, propMissed)
