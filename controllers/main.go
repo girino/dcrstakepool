@@ -266,7 +266,7 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 	// Get the ticket address for this user
 	pooladdress, err := controller.TicketAddressForUserID(int(c.Env["APIUserID"].(int64)))
 	if err != nil {
-		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
+		log.Errorf("unable to derive ticket address: %v", err)
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
@@ -276,8 +276,8 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 	if !poolValidateAddress.IsMine {
-		log.Errorf("unable to validate ismine for pool ticket addr: %s",
-			err.Error())
+		log.Errorf("unable to validate ismine for pool ticket address: %s",
+			pooladdress.String())
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
@@ -361,18 +361,6 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 	return purchaseInfo, codes.OK, "purchaseinfo successfully retrieved", nil
 }
 
-func recalculateMissed(missed uint32, expired uint32, voted uint32) (uint32, float64) {
-	trueMissed := missed;
-	if (missed >= expired) {
-		trueMissed = (missed - expired);
-	}
-	propMissed := float64(trueMissed) / float64(voted+missed)
-
-	//log.Infof("Missed: %v %v", trueMissed, propMissed)
-
-	return trueMissed, propMissed
-}
-
 // APIStats is an API version of the stats page
 func (controller *MainController) APIStats(c web.C,
 	r *http.Request) (*poolapi.Stats, codes.Code, string, error) {
@@ -397,8 +385,6 @@ func (controller *MainController) APIStats(c web.C,
 		poolStatus = "Open"
 	}
 
-	trueMissed, propMissed := recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
-
 	stats := &poolapi.Stats{
 		AllMempoolTix:        gsi.AllMempoolTix,
 		APIVersionsSupported: controller.APIVersionsSupported,
@@ -407,11 +393,11 @@ func (controller *MainController) APIStats(c web.C,
 		Expired:              gsi.Expired,
 		Immature:             gsi.Immature,
 		Live:                 gsi.Live,
-		Missed:               trueMissed,
+		Missed:               gsi.Missed,
 		OwnMempoolTix:        gsi.OwnMempoolTix,
 		PoolSize:             gsi.PoolSize,
 		ProportionLive:       gsi.ProportionLive,
-		ProportionMissed:     propMissed,
+		ProportionMissed:     gsi.ProportionMissed,
 		Revoked:              gsi.Revoked,
 		TotalSubsidy:         gsi.TotalSubsidy,
 		Voted:                gsi.Voted,
@@ -749,7 +735,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	// Get the ticket address for this user
 	pooladdress, err := controller.TicketAddressForUserID(int(uid64))
 	if err != nil {
-		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
+		log.Errorf("unable to derive ticket address: %v", err)
 		session.AddFlash("Unable to derive ticket address", "address")
 		return controller.Address(c, r)
 	}
@@ -764,8 +750,8 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return "/error", http.StatusSeeOther
 	}
 	if !poolValidateAddress.IsMine {
-		log.Errorf("unable to validate ismine for pool ticket addr: %s",
-			err.Error())
+		log.Errorf("unable to validate ismine for pool ticket address: %s",
+			pooladdress.String())
 		session.AddFlash("Unable to validate pool ticket address", "address")
 		return controller.Address(c, r)
 	}
@@ -1543,10 +1529,6 @@ func (controller *MainController) Stats(c web.C, r *http.Request) (string, int) 
 	c.Env["StakeInfo"] = gsi
 	c.Env["UserCount"] = userCount
 	c.Env["UserCountActive"] = userCountActive
-
-	trueMissed, propMissed := recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
-	c.Env["Missed"] = trueMissed
-	c.Env["ProportionMissed"] = propMissed
 
 	widgets := controller.Parse(t, "stats", c.Env)
 	c.Env["Content"] = template.HTML(widgets)
