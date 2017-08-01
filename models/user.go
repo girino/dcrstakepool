@@ -46,6 +46,11 @@ type User struct {
 	VoteBitsVersion  int64
 }
 
+type Notification struct {
+	Id               int64 `db:"UserId"`
+	TicketVoted	 int64
+}
+
 func (user *User) HashPassword(password string) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -72,6 +77,25 @@ func GetUserById(dbMap *gorp.DbMap, id int64) (user *User, err error) {
 	}
 
 	return user, nil
+}
+
+// Email notifications
+func GetNotificationById(dbMap *gorp.DbMap, id int64) (n *Notification, err error) {
+	err = dbMap.SelectOne(&n, "SELECT * FROM Notifications WHERE UserId = ?", id)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if n == nil {
+		return &Notification{Id: id, TicketVoted: 0}, nil
+	}
+
+	return n, nil
+}
+
+func InsertNotification(dbMap *gorp.DbMap, n *Notification) error {
+	return dbMap.Insert(n)
 }
 
 // GetUserCount gives a count of all users
@@ -210,6 +234,9 @@ func GetDbMap(APISecret, baseURL, user, password, hostname, port, database strin
 	dbMap.AddTableWithName(EmailChange{}, "EmailChange").SetKeys(true, "Id")
 	dbMap.AddTableWithName(PasswordReset{}, "PasswordReset").SetKeys(true, "Id")
 	dbMap.AddTableWithName(User{}, "Users").SetKeys(true, "Id")
+
+	// added notifications table
+	dbMap.AddTableWithName(Notification{}, "Notifications").SetKeys(true, "Id")
 
 	// create the table. in a production system you'd generally
 	// use a migration tool, or create the tables via scripts
