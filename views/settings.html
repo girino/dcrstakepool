@@ -85,6 +85,21 @@
        </form>
 
 
+<hr />
+	<h2>Enable Email Notifications</h2>
+       <form class="form-horizontal" method="post">
+	<div class="form-group">
+          <label for="emailnotify" class="control-label col-sm-2">Email Notifications</label>
+	<div class="col-sm-13">
+          <input id="emailnotify" name="emailnotify" type="checkbox" placeholder="emailnotify"{{ if .Notifications }} checked{{end}}>
+	</div>
+        </div>
+        <div class="form-group">
+          <label class="control-label" for="notify"></label>
+          <button id="notify" name="notify" value="true" class="btn btn-primary">Change Notification status</button>
+        </div>
+        <input type="hidden" name="{{.CsrfKey}}" value={{.CsrfToken}}>
+       </form>
 
 
   </div>

@@ -47,8 +47,9 @@ type User struct {
 }
 
 type Notification struct {
-	Id               int64 `db:"UserId"`
-	TicketVoted	 int64
+	Id               int64
+	UserId		 int64
+	LastHeight	 int64
 }
 
 func (user *User) HashPassword(password string) {
@@ -80,22 +81,40 @@ func GetUserById(dbMap *gorp.DbMap, id int64) (user *User, err error) {
 }
 
 // Email notifications
-func GetNotificationById(dbMap *gorp.DbMap, id int64) (n *Notification, err error) {
-	err = dbMap.SelectOne(&n, "SELECT * FROM Notifications WHERE UserId = ?", id)
-
+func GetOrInstantiateNotificationByUserId(dbMap *gorp.DbMap, id int64) (n *Notification, err error) {
+	count, err := dbMap.SelectInt("SELECT count(*) FROM Notifications WHERE UserId = ?", id)
 	if err != nil {
+                log.Errorf("Error Validating Insert: %v", err)
 		return nil, err
+        }
+	if count == 0 { // insert
+		return &Notification{Id: 0, UserId: id, LastHeight: 0}, nil
 	}
-
-	if n == nil {
-		return &Notification{Id: id, TicketVoted: 0}, nil
+	err = dbMap.SelectOne(&n, "SELECT * FROM Notifications WHERE UserId = ?", id)
+	if err != nil {
+		log.Errorf("Can't get notif by id: %v", err)
+		return nil, err
 	}
 
 	return n, nil
 }
 
-func InsertNotification(dbMap *gorp.DbMap, n *Notification) error {
-	return dbMap.Insert(n)
+func InsertOrUpdateNotification(dbMap *gorp.DbMap, userId int64, height int64) error {
+	n, err := GetOrInstantiateNotificationByUserId(dbMap, userId)
+	if err != nil {
+                log.Errorf("Error Validating Insert: %v", err)
+		return err
+        }
+	n.LastHeight = height
+	if n.Id == 0 { // insert
+		err = dbMap.Insert(n)
+	} else {
+		_, err = dbMap.Update(n)
+	}
+	if err != nil {
+                log.Errorf("Can't insert notif by id: %v", err)
+        }
+	return err
 }
 
 // GetUserCount gives a count of all users
@@ -236,7 +255,7 @@ func GetDbMap(APISecret, baseURL, user, password, hostname, port, database strin
 	dbMap.AddTableWithName(User{}, "Users").SetKeys(true, "Id")
 
 	// added notifications table
-	dbMap.AddTableWithName(Notification{}, "Notifications").SetKeys(true, "Id")
+	dbMap.AddTableWithName(Notification{}, "Notifications").SetKeys(true, "Id").ColMap("UserId").SetUnique(true).SetNotNull(true);
 
 	// create the table. in a production system you'd generally
 	// use a migration tool, or create the tables via scripts

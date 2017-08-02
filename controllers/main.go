@@ -1168,6 +1168,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 	}
 
 	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
+	notification, _ := models.GetOrInstantiateNotificationByUserId(dbMap, session.Values["UserId"].(int64))
 
 	// Generate an API Token for the user on demand if one does not exist and
 	// refresh the user's data before displaying it.
@@ -1195,6 +1196,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 	if controller.smtpHost == "" {
 		c.Env["SMTPDisabled"] = true
 	}
+	c.Env["Notifications"] = (notification.LastHeight > 0)
 
 	widgets := controller.Parse(t, "settings", c.Env)
 	c.Env["Title"] = "Decred Stake Pool - Settings"
@@ -1215,6 +1217,40 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 
 	password, updateEmail, updatePassword := r.FormValue("password"),
 		r.FormValue("updateEmail"), r.FormValue("updatePassword")
+
+	notify := (r.FormValue("notify") == "true")
+	if notify {
+		isEmailNotify := r.FormValue("emailnotify") == "on"
+		notification, _ := models.GetOrInstantiateNotificationByUserId(dbMap, session.Values["UserId"].(int64))
+		wasEmailnotify := (notification.LastHeight > 0)
+		if isEmailNotify != wasEmailnotify {
+			log.Infof("Email notification changed. Updating. %v", session.Values["UserId"])
+			if isEmailNotify {
+			 	w := controller.rpcServers
+			        _, height, err := w.GetBestBlock()
+        			if err != nil {
+                			log.Infof("RPC GetBestBlock failed: %v", err)
+                			session.AddFlash("Unable to get best block height", "settingsError")
+					return controller.Settings(c, r)
+        			}
+				notification.LastHeight = height
+			} else {
+				log.Infof("Setting voted to zero. %v", session.Values["UserId"])
+				notification.LastHeight = 0
+			}
+                	log.Infof("InsertNotification: %v", notification)
+			err := models.InsertOrUpdateNotification(dbMap, notification.UserId, notification.LastHeight)
+			if err != nil {
+                		log.Infof("RPC InsertNotification failed: %v", err)
+                		session.AddFlash("Unable to change preferences", "settingsError")
+				return controller.Settings(c, r)
+			}
+		}
+
+		session.AddFlash("Notification preferences successfully updated", "settingsSuccess")
+		
+		return controller.Settings(c, r)
+	}
 
 	user, err := helpers.PasswordValidById(dbMap, session.Values["UserId"].(int64), password)
 	if err != nil {
