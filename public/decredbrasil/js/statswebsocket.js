@@ -36,7 +36,7 @@ $(document).ready(function() {
    $.updateFeeInfo = function(f, p) {
       if (f.MemPoolMean != undefined &&
           f.BlockMean != undefined) {
-         var mean = 0.01; // starts with default 0.01 DCR
+         var mean = 0.001; // starts with default 0.001 DCR
          if (mean < f.BlockMean) mean = f.BlockMean;
          if (mean < f.MemPoolMean) mean = f.MemPoolMean;
          $("#ticket-fee").text($.ceilFixed(mean, 4));
