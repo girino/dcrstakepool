@@ -1,26 +1,28 @@
-hash: 22579d3226386f0deb227919c4cb6f0e69be7551d69bb7cba48ca1b2b97e8642
-updated: 2017-04-26T14:29:42.15087597-05:00
+hash: b5a90eed086645c55dcbc833f06e494590dee0fa95b3ff31aaea5e079c81cea1
+updated: 2017-07-24T22:24:28.484246226Z
 imports:
+- name: github.com/agl/ed25519
+  version: 278e1ec8e8a6e017cd07577924d6766039146ced
+  subpackages:
+  - edwards25519
 - name: github.com/btcsuite/btclog
-  version: 73889fb79bd687870312b6e40effcecffbd57d30
+  version: 84c8d2346e9fc8c7b947e243b9c24e6df9fd206a
 - name: github.com/btcsuite/go-flags
   version: 6c288d648c1cc1befcb90cb5511dcacf64ae8e61
 - name: github.com/btcsuite/go-socks
   version: 4720035b7bfd2a9bb130b1c184f8bbe41b6f0d0f
   subpackages:
   - socks
-- name: github.com/btcsuite/seelog
-  version: 313961b101eb55f65ae0f03ddd4e322731763b6c
 - name: github.com/btcsuite/websocket
   version: 31079b6807923eb23992c421b114992b95131b55
 - name: github.com/davecgh/go-spew
-  version: 346938d642f2ec3594ed81d874461961cd0faa76
+  version: 6d212800a42e8ab5c146b8ace3490ee17e5225f9
   subpackages:
   - spew
 - name: github.com/decred/blake256
   version: a840e32d7c31fe2e0218607334cb120a683951a4
 - name: github.com/decred/dcrd
-  version: 5c3e0d6454001c8d14fcf06be94381d93991aaea
+  version: 21df6b7664d20e0a47f3c4cbdd5757aac7de8843
   subpackages:
   - blockchain
   - blockchain/internal/dbnamespace
@@ -40,28 +42,21 @@ imports:
   - txscript
   - wire
 - name: github.com/decred/dcrrpcclient
-  version: e5a52611671993ad821dab68f6e7d8fb57510381
+  version: 5dcd9e5b9cf04d8c624f6068f18c4195d19907d3
 - name: github.com/decred/dcrutil
-  version: ebd2e98736e819ac043d54439969b30144b92ced
+  version: 58e046aab848365647c44b295f4fab078fbc3392
   subpackages:
   - base58
   - hdkeychain
 - name: github.com/decred/dcrwallet
-  version: a642114a124c6174130d528d9d33fe69128d2688
+  version: f1abdda1589328df91c34f55ce9bd18e3b90344a
   subpackages:
   - apperrors
   - chain
   - internal/zero
-  - pgpwordlist
   - snacl
-  - wallet/txrules
   - wallet/udb
   - walletdb
-  - walletseed
-- name: github.com/decred/ed25519
-  version: b0909d3f798b97a03c9e77023f97a5301a2a7900
-  subpackages:
-  - edwards25519
 - name: github.com/dgrijalva/jwt-go
   version: 2268707a8f0843315e2004ee4f1d021dc08baedf
 - name: github.com/go-gorp/gorp
@@ -81,6 +76,10 @@ imports:
   version: ba78acc856fe7c79891d516131b3d903cc8d9367
 - name: github.com/haisum/recaptcha
   version: 7d3b8053900e7a0f549a11e800649a5fa950700f
+- name: github.com/jrick/logrotate
+  version: a93b200c26cbae3bb09dd0dc2c7c7fe1468a034a
+  subpackages:
+  - rotator
 - name: github.com/zenazn/goji
   version: 4d7077956293261309684d3cf1af673f773c6819
   subpackages:
@@ -90,7 +89,7 @@ imports:
   - web/middleware
   - web/mutil
 - name: golang.org/x/crypto
-  version: efac7f277b17c19894091e358c6130cb6bd51117
+  version: 6914964337150723782436d56b3f21610a74ce7b
   subpackages:
   - bcrypt
   - blowfish
@@ -101,7 +100,7 @@ imports:
   - salsa20/salsa
   - scrypt
 - name: golang.org/x/net
-  version: 5602c733f70afc6dcec6766be0d5034d4c4f14de
+  version: 8663ed5da4fd087c3cfb99a996e628b72e2f0948
   subpackages:
   - context
   - http2
@@ -111,7 +110,7 @@ imports:
   - lex/httplex
   - trace
 - name: golang.org/x/text
-  version: f4b4367115ec2de254587813edaa901bc1c723a8
+  version: 6353ef0f924300eea566d3438817aa4d3374817e
   subpackages:
   - secure/bidirule
   - transform
@@ -122,10 +121,11 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 8050b9cbc271307e5a716a9d782803d09b0d6f2d
+  version: 172ccacff3cfbddedcf1ba5ea06cda943bc976c1
   subpackages:
   - codes
   - credentials
+  - grpclb/grpc_lb_v1
   - grpclog
   - internal
   - keepalive

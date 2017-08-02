@@ -46,6 +46,12 @@ type User struct {
 	VoteBitsVersion  int64
 }
 
+type Notification struct {
+	Id               int64
+	UserId		 int64
+	LastHeight	 int64
+}
+
 func (user *User) HashPassword(password string) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -72,6 +78,43 @@ func GetUserById(dbMap *gorp.DbMap, id int64) (user *User, err error) {
 	}
 
 	return user, nil
+}
+
+// Email notifications
+func GetOrInstantiateNotificationByUserId(dbMap *gorp.DbMap, id int64) (n *Notification, err error) {
+	count, err := dbMap.SelectInt("SELECT count(*) FROM Notifications WHERE UserId = ?", id)
+	if err != nil {
+                log.Errorf("Error Validating Insert: %v", err)
+		return nil, err
+        }
+	if count == 0 { // insert
+		return &Notification{Id: 0, UserId: id, LastHeight: 0}, nil
+	}
+	err = dbMap.SelectOne(&n, "SELECT * FROM Notifications WHERE UserId = ?", id)
+	if err != nil {
+		log.Errorf("Can't get notif by id: %v", err)
+		return nil, err
+	}
+
+	return n, nil
+}
+
+func InsertOrUpdateNotification(dbMap *gorp.DbMap, userId int64, height int64) error {
+	n, err := GetOrInstantiateNotificationByUserId(dbMap, userId)
+	if err != nil {
+                log.Errorf("Error Validating Insert: %v", err)
+		return err
+        }
+	n.LastHeight = height
+	if n.Id == 0 { // insert
+		err = dbMap.Insert(n)
+	} else {
+		_, err = dbMap.Update(n)
+	}
+	if err != nil {
+                log.Errorf("Can't insert notif by id: %v", err)
+        }
+	return err
 }
 
 // GetUserCount gives a count of all users
@@ -210,6 +253,9 @@ func GetDbMap(APISecret, baseURL, user, password, hostname, port, database strin
 	dbMap.AddTableWithName(EmailChange{}, "EmailChange").SetKeys(true, "Id")
 	dbMap.AddTableWithName(PasswordReset{}, "PasswordReset").SetKeys(true, "Id")
 	dbMap.AddTableWithName(User{}, "Users").SetKeys(true, "Id")
+
+	// added notifications table
+	dbMap.AddTableWithName(Notification{}, "Notifications").SetKeys(true, "Id").ColMap("UserId").SetUnique(true).SetNotNull(true);
 
 	// create the table. in a production system you'd generally
 	// use a migration tool, or create the tables via scripts

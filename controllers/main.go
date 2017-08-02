@@ -253,7 +253,7 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 		return nil, codes.InvalidArgument, "address error", errors.New("address too long")
 	}
 
-	u, err := dcrutil.DecodeAddress(userPubKeyAddr, controller.params)
+	u, err := dcrutil.DecodeAddress(userPubKeyAddr)
 	if err != nil {
 		return nil, codes.InvalidArgument, "address error", errors.New("couldn't decode address")
 	}
@@ -266,7 +266,7 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 	// Get the ticket address for this user
 	pooladdress, err := controller.TicketAddressForUserID(int(c.Env["APIUserID"].(int64)))
 	if err != nil {
-		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
+		log.Errorf("unable to derive ticket address: %v", err)
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
@@ -276,14 +276,14 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 	if !poolValidateAddress.IsMine {
-		log.Errorf("unable to validate ismine for pool ticket addr: %s",
-			err.Error())
+		log.Errorf("unable to validate ismine for pool ticket address: %s",
+			pooladdress.String())
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
 	poolPubKeyAddr := poolValidateAddress.PubKeyAddr
 
-	p, err := dcrutil.DecodeAddress(poolPubKeyAddr, controller.params)
+	p, err := dcrutil.DecodeAddress(poolPubKeyAddr)
 	if err != nil {
 		controller.handlePotentialFatalError("DecodeAddress poolPubKeyAddr", err)
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
@@ -361,18 +361,6 @@ func (controller *MainController) APIPurchaseInfo(c web.C,
 	return purchaseInfo, codes.OK, "purchaseinfo successfully retrieved", nil
 }
 
-func recalculateMissed(missed uint32, expired uint32, voted uint32) (uint32, float64) {
-	trueMissed := missed;
-	if (missed >= expired) {
-		trueMissed = (missed - expired);
-	}
-	propMissed := float64(trueMissed) / float64(voted+missed)
-
-	//log.Infof("Missed: %v %v", trueMissed, propMissed)
-
-	return trueMissed, propMissed
-}
-
 // APIStats is an API version of the stats page
 func (controller *MainController) APIStats(c web.C,
 	r *http.Request) (*poolapi.Stats, codes.Code, string, error) {
@@ -397,8 +385,6 @@ func (controller *MainController) APIStats(c web.C,
 		poolStatus = "Open"
 	}
 
-	trueMissed, propMissed := recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
-
 	stats := &poolapi.Stats{
 		AllMempoolTix:        gsi.AllMempoolTix,
 		APIVersionsSupported: controller.APIVersionsSupported,
@@ -407,11 +393,11 @@ func (controller *MainController) APIStats(c web.C,
 		Expired:              gsi.Expired,
 		Immature:             gsi.Immature,
 		Live:                 gsi.Live,
-		Missed:               trueMissed,
+		Missed:               gsi.Missed,
 		OwnMempoolTix:        gsi.OwnMempoolTix,
 		PoolSize:             gsi.PoolSize,
 		ProportionLive:       gsi.ProportionLive,
-		ProportionMissed:     propMissed,
+		ProportionMissed:     gsi.ProportionMissed,
 		Revoked:              gsi.Revoked,
 		TotalSubsidy:         gsi.TotalSubsidy,
 		Voted:                gsi.Voted,
@@ -734,7 +720,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	}
 
 	// Get dcrutil.Address for user from pubkey address string
-	u, err := dcrutil.DecodeAddress(userPubKeyAddr, controller.params)
+	u, err := dcrutil.DecodeAddress(userPubKeyAddr)
 	if err != nil {
 		session.AddFlash("Couldn't decode address", "address")
 		return controller.Address(c, r)
@@ -749,7 +735,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	// Get the ticket address for this user
 	pooladdress, err := controller.TicketAddressForUserID(int(uid64))
 	if err != nil {
-		log.Errorf("unexpected error deriving ticket addr: %s", err.Error())
+		log.Errorf("unable to derive ticket address: %v", err)
 		session.AddFlash("Unable to derive ticket address", "address")
 		return controller.Address(c, r)
 	}
@@ -764,15 +750,15 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return "/error", http.StatusSeeOther
 	}
 	if !poolValidateAddress.IsMine {
-		log.Errorf("unable to validate ismine for pool ticket addr: %s",
-			err.Error())
+		log.Errorf("unable to validate ismine for pool ticket address: %s",
+			pooladdress.String())
 		session.AddFlash("Unable to validate pool ticket address", "address")
 		return controller.Address(c, r)
 	}
 	poolPubKeyAddr := poolValidateAddress.PubKeyAddr
 
 	// Get back Address from pool's new pubkey address
-	p, err := dcrutil.DecodeAddress(poolPubKeyAddr, controller.params)
+	p, err := dcrutil.DecodeAddress(poolPubKeyAddr)
 	if err != nil {
 		controller.handlePotentialFatalError("DecodeAddress poolPubKeyAddr", err)
 		return "/error", http.StatusSeeOther
@@ -1182,6 +1168,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 	}
 
 	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
+	notification, _ := models.GetOrInstantiateNotificationByUserId(dbMap, session.Values["UserId"].(int64))
 
 	// Generate an API Token for the user on demand if one does not exist and
 	// refresh the user's data before displaying it.
@@ -1209,6 +1196,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 	if controller.smtpHost == "" {
 		c.Env["SMTPDisabled"] = true
 	}
+	c.Env["Notifications"] = (notification.LastHeight > 0)
 
 	widgets := controller.Parse(t, "settings", c.Env)
 	c.Env["Title"] = "Decred Stake Pool - Settings"
@@ -1229,6 +1217,40 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 
 	password, updateEmail, updatePassword := r.FormValue("password"),
 		r.FormValue("updateEmail"), r.FormValue("updatePassword")
+
+	notify := (r.FormValue("notify") == "true")
+	if notify {
+		isEmailNotify := r.FormValue("emailnotify") == "on"
+		notification, _ := models.GetOrInstantiateNotificationByUserId(dbMap, session.Values["UserId"].(int64))
+		wasEmailnotify := (notification.LastHeight > 0)
+		if isEmailNotify != wasEmailnotify {
+			log.Infof("Email notification changed. Updating. %v", session.Values["UserId"])
+			if isEmailNotify {
+			 	w := controller.rpcServers
+			        _, height, err := w.GetBestBlock()
+        			if err != nil {
+                			log.Infof("RPC GetBestBlock failed: %v", err)
+                			session.AddFlash("Unable to get best block height", "settingsError")
+					return controller.Settings(c, r)
+        			}
+				notification.LastHeight = height
+			} else {
+				log.Infof("Setting voted to zero. %v", session.Values["UserId"])
+				notification.LastHeight = 0
+			}
+                	log.Infof("InsertNotification: %v", notification)
+			err := models.InsertOrUpdateNotification(dbMap, notification.UserId, notification.LastHeight)
+			if err != nil {
+                		log.Infof("RPC InsertNotification failed: %v", err)
+                		session.AddFlash("Unable to change preferences", "settingsError")
+				return controller.Settings(c, r)
+			}
+		}
+
+		session.AddFlash("Notification preferences successfully updated", "settingsSuccess")
+		
+		return controller.Settings(c, r)
+	}
 
 	user, err := helpers.PasswordValidById(dbMap, session.Values["UserId"].(int64), password)
 	if err != nil {
@@ -1544,10 +1566,6 @@ func (controller *MainController) Stats(c web.C, r *http.Request) (string, int) 
 	c.Env["UserCount"] = userCount
 	c.Env["UserCountActive"] = userCountActive
 
-	trueMissed, propMissed := recalculateMissed(gsi.Missed, gsi.Expired, gsi.Voted)
-	c.Env["Missed"] = trueMissed
-	c.Env["ProportionMissed"] = propMissed
-
 	widgets := controller.Parse(t, "stats", c.Env)
 	c.Env["Content"] = template.HTML(widgets)
 
@@ -1562,7 +1580,8 @@ func (controller *MainController) Status(c web.C, r *http.Request) (string, int)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if !stringSliceContains(controller.adminIPs, remoteIP) {
-		return "/error", http.StatusSeeOther
+		log.Warnf("unauthorized /status request from %v", remoteIP)
+		return "", http.StatusUnauthorized
 	}
 
 	// Attempt to query wallet statuses
@@ -1724,7 +1743,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	}
 
 	// Get P2SH Address
-	multisig, err := dcrutil.DecodeAddress(user.MultiSigAddress, controller.params)
+	multisig, err := dcrutil.DecodeAddress(user.MultiSigAddress)
 	if err != nil {
 		log.Infof("Invalid address %v in database: %v", user.MultiSigAddress, err)
 		return "/error", http.StatusSeeOther
