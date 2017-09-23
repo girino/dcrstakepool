@@ -34,11 +34,11 @@ $(document).ready(function() {
    }
 
    $.updateFeeInfo = function(f, p) {
-      if (f.MemPoolMean != undefined &&
-          f.BlockMean != undefined) {
+      //if (f.MemPoolMean != undefined &&
+      //    f.BlockMean != undefined) {
          var mean = 0.001; // starts with default 0.001 DCR
-         if (mean < f.BlockMean) mean = f.BlockMean;
-         if (mean < f.MemPoolMean) mean = f.MemPoolMean;
+         //if (mean < f.BlockMean) mean = f.BlockMean;
+         //if (mean < f.MemPoolMean) mean = f.MemPoolMean;
          $("#ticket-fee").text($.ceilFixed(mean, 4));
          $("#last-block-mean").text($.ceilFixed(f.BlockMean, 4));
          $("#mempool-mean").text($.ceilFixed(f.MemPoolMean, 4));
@@ -46,7 +46,7 @@ $(document).ready(function() {
            // reward in one month
             $("#ticket-profit").text($.getProfit(mean, p.CurrentTicketPrice, p.Height) + "%");
          }
-      }
+      //}
    }
 
    $.updatePrices = function(p) {
