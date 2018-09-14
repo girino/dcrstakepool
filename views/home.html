@@ -4,7 +4,9 @@
     <div class="col-xs-15 col-md-8 col-lg-8 notication-col center-block">
     </div>
     <div class="col-sm-12 col-md-10 col-lg-8 center-block">
-{{if .IsClosed }}<div class="well well-notification  green-notification">{{.ClosePoolMsg}}</div>{{end}}
+{{if .IsClosed }}<div class="well well-notification green-notification">{{.ClosePoolMsg}}</div>{{end}}
+<div id="split-beta" class="well well-notification">Dear Users, we are conducting beta tests on <b>Ticket Splitting</b>. If you feel like joining our tests, go to #ticket-split channel on our slack (<a href="https://join.slack.com/t/decredbrasil/shared_invite/enQtNDAxNjQ0MjM3MDEyLWM2YmMyNTlkMmJmMmQ3Nzk0MDY3N2RiNjViYmYwMTEyNGI5MTQyMGJhNzc4Yzk5NjNlMTFhOGZkODMzODRkNTI">click here to receive an invite</a>) or #ticket_splitting channel ond decred official slack (<a href="https://decred.slack.com/">https://decred.slack.com/</a>). <br /> <br />
+PT_BR <a href="https://slack-files.com/TBT4YP41W-FC5FKBKM3-1cfe5a3a61">Tutorial</a>.</div>
        <div class="panel panel-default panel-control">
            <div class="panel-body">
              <h1>Current ticket price: <span id="ticket-price">...</span> DCR. <!-- <br/>We recommend <span id="ticket-recommend">...</span></h1> -->
@@ -35,6 +37,7 @@
          <li>Pool Fees: {{.PoolFees}}%</li>
          <li>Support Email: <a href="mailto:{{.PoolEmail}}">{{.PoolEmail}}</a></li>
          <li>Support Link: <a href="{{.PoolLink}}" target="_blank">{{.PoolLink}}</a></li>
+         <li>Slack: <a href="https://decredbrasil.slack.com">https://decredbrasil.slack.com</a> (<a href="https://join.slack.com/t/decredbrasil/shared_invite/enQtNDAxNjQ0MjM3MDEyLWM2YmMyNTlkMmJmMmQ3Nzk0MDY3N2RiNjViYmYwMTEyNGI5MTQyMGJhNzc4Yzk5NjNlMTFhOGZkODMzODRkNTI" target="_blank">join here</a>)</li>
        </ul>
     </div>   
     </div>
