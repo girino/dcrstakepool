@@ -1356,6 +1356,26 @@ func (controller *MainController) Index(c web.C, r *http.Request) (string, int) 
 	return helpers.Parse(t, "main", c.Env), http.StatusOK
 }
 
+// Docs renders the docs page.
+func (controller *MainController) Docs(c web.C, r *http.Request) (string, int) {
+	c.Env["Network"] = controller.params.Name
+	c.Env["PoolEmail"] = controller.poolEmail
+	c.Env["PoolFees"] = controller.poolFees
+	c.Env["PoolLink"] = controller.poolLink
+
+	t := controller.GetTemplate(c)
+
+	// execute the named template with data in c.Env
+	widgets := helpers.Parse(t, "docs", c.Env)
+
+	c.Env["Admin"], _ = controller.isAdmin(c, r)
+	c.Env["IsDocs"] = true
+	c.Env["Title"] = "Decred Stake Pool - Docs"
+	c.Env["Content"] = template.HTML(widgets)
+
+	return helpers.Parse(t, "main", c.Env), http.StatusOK
+}
+
 // PasswordReset renders the password reset page.
 func (controller *MainController) PasswordReset(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)

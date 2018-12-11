@@ -1,0 +1,27 @@
+{{define "docs"}}
+<div class="wrapper">
+    <div class="row main-row">
+    <div class="col-xs-15 col-md-8 col-lg-8 notication-col center-block">
+    </div>
+    <div class="col-sm-12 col-md-10 col-lg-8 center-block">
+       <h1 class="text-center">Documentation and Tutorials</h1>
+       <ul>
+         <li class="li-heading">Videos</li>
+         <li><a href="https://youtu.be/TiZLeThEta0">Wallet setup and ticket buying</a> in Portuguese (thanks Epaminondas Channel)</li>
+         <li><a href="https://youtu.be/3RGoUQK0g24">Split Tickets Tutorial</a> in Portuguese with English subtitles</li>
+       </ul>
+       <ul>
+         <li class="li-heading">Texts Tutorials</li>
+         <li><a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets_v002.docx">Tutorial on split tickets</a> in Portuguese (thanks rramires)</li>
+       </ul>
+       <ul>
+         <li class="li-heading">Support Channels</li>
+         <li>Slack: <a href="https://decredbrasil.slack.com">https://decredbrasil.slack.com</a> (<a href="https://join.slack.com/t/decredbrasil/shared_invite/enQtNDAxNjQ0MjM3MDEyLWM2YmMyNTlkMmJmMmQ3Nzk0MDY3N2RiNjViYmYwMTEyNGI5MTQyMGJhNzc4Yzk5NjNlMTFhOGZkODMzODRkNTI" target="_blank">join here</a>)</li>
+         <li>Support Email: <a href="mailto:{{.PoolEmail}}">{{.PoolEmail}}</a></li>
+         <li>Support Link: <a href="{{.PoolLink}}" target="_blank">{{.PoolLink}}</a></li>
+       </ul>
+ 
+    </div>   
+    </div>
+</div>
+{{end}}

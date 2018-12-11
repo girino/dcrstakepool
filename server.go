@@ -237,6 +237,9 @@ func runMain() int {
 	app.Get("/voting", application.Route(controller, "Voting"))
 	app.Post("/voting", application.Route(controller, "VotingPost"))
 
+        // Docs routes
+	app.Get("/docs", application.Route(controller, "Docs"))
+
 	// KTHXBYE
 	app.Get("/logout", application.Route(controller, "Logout"))
 
