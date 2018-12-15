@@ -1,0 +1,23 @@
+        .sessions .name {
+            margin-right: 2em;
+        }
+
+        .sessions .total {
+            margin-left: 2em;
+        }
+
+        .sessionname {
+            #margin-left: 1em;
+            #font-size: 60%;
+            color: #70cbff;
+        }
+        .sessiontitle {
+            #color: #70cbff;
+            color: black;
+        }
+        .split-beta-class {
+            color: black;
+        }
+	.sessions li {
+            color: black;
+	} 
