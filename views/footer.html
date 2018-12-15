@@ -224,6 +224,33 @@ var pie = new d3pie("test3", {
 
 {{if .IsIndex }}
    <script type="text/javascript" src="/assets/decredbrasil/js/statswebsocket.js"></script>
+   <!-- loads split ticket session info -->
+   <script type="text/javascript" src="/assets/decredbrasil/js/watcher.js"></script>
+   <script type="text/javascript">
+function domReady() {
+            debug("dom ready")
+            newWatcher("wss://split-ticket-svc.stake.decredbrasil.com:8477", "stakepool-brasil");
+            initWatchers();
+        }
+
+        // Mozilla, Opera, Webkit
+        if (document.addEventListener) {
+            document.addEventListener("DOMContentLoaded", function () {
+                document.removeEventListener("DOMContentLoaded", arguments.callee, false);
+                domReady();
+            }, false);
+
+            // If IE event model is used
+        } else if (document.attachEvent) {
+            // ensure firing before onload
+            document.attachEvent("onreadystatechange", function () {
+                if (document.readyState === "complete") {
+                    document.detachEvent("onreadystatechange", arguments.callee);
+                    domReady();
+                }
+            });
+        }
+   </script>
 {{end}}
 
   </body>
