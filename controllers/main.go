@@ -35,11 +35,11 @@ import (
 )
 
 var (
-	// MaxUsers is the maximum number of users supported by a stake pool.
+	// MaxUsers is the maximum number of users supported by a voting service.
 	// This is an artificial limit and can be increased by adjusting the
 	// ticket/fee address indexes above 10000.
 	MaxUsers            = 10000
-	signupEmailSubject  = "Stake pool email verification"
+	signupEmailSubject  = "Voting service provider email verification"
 	signupEmailTemplate = "A request for an account for __URL__\r\n" +
 		"was made from __REMOTEIP__ for this email address.\r\n\n" +
 		"If you made this request, follow the link below:\r\n\n" +
@@ -185,9 +185,9 @@ func NewMainController(params *chaincfg.Params, adminIPs []string,
 }
 
 // getNetworkName will strip any suffix from a network name starting with
-// "testnet" (e.g. "testnet2"). This is primarily intended for the tickets page,
+// "testnet" (e.g. "testnet3"). This is primarily intended for the tickets page,
 // which generates block explorer links using a value set by the network string,
-// which is a problem since there is no testnet2.decred.org host.
+// which is a problem since there is no testnet3.dcrdata.org host.
 func (controller *MainController) getNetworkName() string {
 	if strings.HasPrefix(controller.params.Name, "testnet") {
 		return "testnet"
@@ -835,7 +835,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 	dbMap := controller.GetDbMap(c)
 	user, _ := models.GetUserById(dbMap, session.Values["UserId"].(int64))
 	if len(user.UserPubKeyAddr) > 0 {
-		session.AddFlash("Stake pool is currently limited to one address per account", "address")
+		session.AddFlash("The voting service is currently limited to one address per account", "address")
 		return controller.Address(c, r)
 	}
 
@@ -989,7 +989,8 @@ func (controller *MainController) AdminStatus(c web.C, r *http.Request) (string,
 	// Attempt to query wallet statuses
 	walletInfo, err := controller.WalletStatus()
 	if err != nil {
-		// decide when to throw err here
+		log.Errorf("Failed to execute WalletStatus: %v", err)
+		return "/error", http.StatusSeeOther
 	}
 
 	type WalletInfoPage struct {
@@ -1043,7 +1044,7 @@ func (controller *MainController) AdminStatus(c web.C, r *http.Request) (string,
 	t := controller.GetTemplate(c)
 	c.Env["Admin"] = isAdmin
 	c.Env["IsAdminStatus"] = true
-	c.Env["Title"] = "Decred Stake Pool - Status (Admin)"
+	c.Env["Title"] = "Decred Voting Service - Status (Admin)"
 
 	// Set info to be used by admins on /status page.
 	c.Env["StakepooldInfo"] = stakepooldPageInfo
@@ -1092,7 +1093,7 @@ func (controller *MainController) AdminTickets(c web.C, r *http.Request) (string
 	c.Env["IgnoredLowFeeTickets"], _ = controller.StakepooldGetIgnoredLowFeeTickets()
 	widgets := controller.Parse(t, "admin/tickets", c.Env)
 
-	c.Env["Title"] = "Decred Stake Pool - Tickets (Admin)"
+	c.Env["Title"] = "Decred Voting Service - Tickets (Admin)"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
@@ -1261,7 +1262,7 @@ func (controller *MainController) EmailUpdate(c web.C, r *http.Request) (string,
 
 	widgets := controller.Parse(t, "emailupdate", c.Env)
 	c.Env["IsEmailUpdate"] = true
-	c.Env["Title"] = "Decred Stake Pool - Email Update"
+	c.Env["Title"] = "Decred Voting Service - Email Update"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
@@ -1303,7 +1304,7 @@ func (controller *MainController) EmailVerify(c web.C, r *http.Request) (string,
 
 	widgets := controller.Parse(t, "emailverify", c.Env)
 	c.Env["IsEmailVerify"] = true
-	c.Env["Title"] = "Decred Stake Pool - Email Verification"
+	c.Env["Title"] = "Decred Voting Service - Email Verification"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
@@ -1350,7 +1351,7 @@ func (controller *MainController) Index(c web.C, r *http.Request) (string, int) 
 
 	c.Env["Admin"], _ = controller.isAdmin(c, r)
 	c.Env["IsIndex"] = true
-	c.Env["Title"] = "Decred Stake Pool - Welcome"
+	c.Env["Title"] = "Decred Voting Service - Welcome"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return helpers.Parse(t, "main", c.Env), http.StatusOK
@@ -1389,7 +1390,7 @@ func (controller *MainController) PasswordReset(c web.C, r *http.Request) (strin
 	}
 
 	widgets := controller.Parse(t, "passwordreset", c.Env)
-	c.Env["Title"] = "Decred Stake Pool - Password Reset"
+	c.Env["Title"] = "Decred Voting Service - Password Reset"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
@@ -1443,7 +1444,7 @@ func (controller *MainController) PasswordResetPost(c web.C, r *http.Request) (s
 			"If you did not make this request, you may safely ignore this " +
 			"email.\r\n" + "However, you may want to look into how this " +
 			"happened.\r\n"
-		err := controller.SendMail(user.Email, "Stake pool password reset", body)
+		err := controller.SendMail(user.Email, "Voting service password reset", body)
 		if err != nil {
 			session.AddFlash("Unable to send password reset email", "passwordresetError")
 			log.Errorf("error sending password reset email %v", err)
@@ -1488,7 +1489,7 @@ func (controller *MainController) PasswordUpdate(c web.C, r *http.Request) (stri
 
 	widgets := controller.Parse(t, "passwordupdate", c.Env)
 	c.Env["IsPasswordUpdate"] = true
-	c.Env["Title"] = "Decred Stake Pool - Password Update"
+	c.Env["Title"] = "Decred Voting Service - Password Update"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
@@ -1604,7 +1605,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 	c.Env["Notifications"] = (notification.LastHeight > 0)
 
 	widgets := controller.Parse(t, "settings", c.Env)
-	c.Env["Title"] = "Decred Stake Pool - Settings"
+	c.Env["Title"] = "Decred Voting Service - Settings"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
@@ -1706,7 +1707,7 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 		}
 
 		bodyNew := "A request was made to change the email address\r\n" +
-			"for a stake pool account at " + controller.baseURL + "\r\n" +
+			"for a voting service account at " + controller.baseURL + "\r\n" +
 			"from " + user.Email + " to " + newEmail + "\r\n\n" +
 			"The request was made from IP address " + remoteIP + "\r\n\n" +
 			"If you made this request, follow the link below:\r\n\n" +
@@ -1715,7 +1716,7 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 			"If you did not make this request, you may safely ignore this " +
 			"email.\r\n" + "However, you may want to look into how this " +
 			"happened.\r\n"
-		err = controller.SendMail(newEmail, "Stake pool email change", bodyNew)
+		err = controller.SendMail(newEmail, "Voting service email change", bodyNew)
 		if err != nil {
 			session.AddFlash("Unable to send email change token.",
 				"settingsError")
@@ -1727,12 +1728,12 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 		}
 
 		bodyOld := "A request was made to change the email address\r\n" +
-			"for your stake pool account at " + controller.baseURL + "\r\n" +
+			"for your voting service account at " + controller.baseURL + "\r\n" +
 			"from " + user.Email + " to " + newEmail + "\r\n\n" +
 			"The request was made from IP address " + remoteIP + "\r\n\n" +
 			"If you did not make this request, please contact the \r\n" +
-			"stake pool administrator immediately.\r\n"
-		err = controller.SendMail(user.Email, "Stake pool email change",
+			"Voting service administrator immediately.\r\n"
+		err = controller.SendMail(user.Email, "Voting service email change",
 			bodyOld)
 		// this likely has the same status as the above email so don't
 		// inform the user.
@@ -1758,11 +1759,11 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 		}
 
 		// send a confirmation email.
-		body := "Your stake pool password for " + controller.baseURL + "\r\n" +
+		body := "Your voting service password for " + controller.baseURL + "\r\n" +
 			"was just changed by IP Address " + remoteIP + "\r\n\n" +
 			"If you did not make this request, please contact the \r\n" +
-			"stake pool administrator immediately.\r\n"
-		err = controller.SendMail(user.Email, "Stake pool password change",
+			"Voting service administrator immediately.\r\n"
+		err = controller.SendMail(user.Email, "Voting service password change",
 			body)
 		if err != nil {
 			log.Errorf("error sending password change confirmation %v %v",
@@ -2067,7 +2068,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	// Get P2SH Address
 	multisig, err := dcrutil.DecodeAddress(user.MultiSigAddress)
 	if err != nil {
-		log.Infof("Invalid address %v in database: %v", user.MultiSigAddress, err)
+		log.Warnf("Invalid address %v in database: %v", user.MultiSigAddress, err)
 		return "/error", http.StatusSeeOther
 	}
 
@@ -2082,7 +2083,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 	if err != nil {
 		// Render page with message to try again later
 		log.Infof("RPC StakePoolUserInfo failed: %v", err)
-		session.AddFlash("Unable to retrieve stake pool user info", "main")
+		session.AddFlash("Unable to retrieve voting service user info", "main")
 		c.Env["Flash"] = session.Flashes("main")
 		return controller.Parse(t, "main", c.Env), http.StatusInternalServerError
 	}
@@ -2193,7 +2194,7 @@ func (controller *MainController) Voting(c web.C, r *http.Request) (string, int)
 	c.Env["VoteVersion"] = controller.voteVersion
 
 	widgets := controller.Parse(t, "voting", c.Env)
-	c.Env["Title"] = "Decred Stake Pool - Voting"
+	c.Env["Title"] = "Decred Voting Service - Voting"
 	c.Env["Content"] = template.HTML(widgets)
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
