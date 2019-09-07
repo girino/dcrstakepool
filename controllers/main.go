@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dchest/captcha"
@@ -44,6 +45,8 @@ const (
 	// This is an artificial limit and can be increased by adjusting the
 	// ticket/fee address indexes above 10000.
 	MaxUsers = 10000
+	// agendasCacheLife is the amount of time to keep agenda data in memory.
+	agendasCacheLife = time.Hour
 )
 
 // MainController is the wallet RPC controller type.  Its methods include the
@@ -75,6 +78,25 @@ type MainController struct {
 	maxVotedTickets      int
 	description          string
 	designation          string
+}
+
+// agendasCache holds the current available agendas for agendasCacheLife. Should
+// be accessed through MainController's agendas method.
+var agendasCache agendasMux
+
+// agenda links an agenda to its status. Possible statuses are upcoming,
+// in progress, finished, failed, or locked in.
+type agenda struct {
+	Agenda chaincfg.ConsensusDeployment
+	Status string
+}
+
+// agendasMux allows for concurrency safe access to agendasCache. Lock must be
+// held for read/writes.
+type agendasMux struct {
+	sync.Mutex
+	timer   time.Time
+	agendas *[]agenda
 }
 
 // Get the client's real IP address using the X-Real-IP header, or if that is
@@ -183,6 +205,45 @@ func (controller *MainController) getNetworkName() string {
 		return "testnet"
 	}
 	return controller.params.Name
+}
+
+// agendas returns agendas and their statuses. Fetches agenda status from
+// dcrdata.org if past agenda.Timer limit from previous fetch. Caches agenda
+// data for agendasCacheLife. This method is safe for concurrent use.
+func (controller *MainController) agendas() []agenda {
+	agendasCache.Lock()
+	defer agendasCache.Unlock()
+	now := time.Now()
+	if agendasCache.timer.After(now) {
+		return *agendasCache.agendas
+	}
+	agendasCache.timer = now.Add(agendasCacheLife)
+	url := fmt.Sprintf("https://%s.dcrdata.org/api/agendas", controller.getNetworkName())
+	agendaInfos, err := dcrDataAgendas(url)
+	if err != nil {
+		// Ensure the next call tries to fetch statuses again.
+		agendasCache.timer = time.Time{}
+		log.Warnf("unable to retrieve data from %v: %v", url, err)
+		// If we have initialized agendas, return that.
+		if agendasCache.agendas != nil {
+			return *agendasCache.agendas
+		}
+	}
+	agendaArray := controller.getAgendas()
+	agendasNew := make([]agenda, len(agendaArray))
+	// populate agendas
+	for n, agenda := range agendaArray {
+		agendasNew[n].Agenda = agenda
+		// find status for id
+		for _, info := range agendaInfos {
+			if info.Name == agenda.Vote.Id {
+				agendasNew[n].Status = info.Status.String()
+				break
+			}
+		}
+	}
+	agendasCache.agendas = &agendasNew
+	return *agendasCache.agendas
 }
 
 // dcrDataAgendas gets json data for current agendas from url. url is either
@@ -299,14 +360,14 @@ func (controller *MainController) APIAddress(c web.C, r *http.Request) ([]string
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
-	// Serialize the RedeemScript (hex string -> []byte)
+	// Serialize the redeem script (hex string -> []byte)
 	serializedScript, err := hex.DecodeString(createMultiSig.RedeemScript)
 	if err != nil {
 		controller.handlePotentialFatalError("CreateMultisig DecodeString", err)
 		return nil, codes.Unavailable, "system error", errors.New("unable to process wallet commands")
 	}
 
-	// Import the RedeemScript
+	// Import the redeem script
 	var importedHeight int64
 	importedHeight, err = controller.StakepooldServers.ImportScript(serializedScript)
 	if err != nil {
@@ -576,7 +637,7 @@ func (controller *MainController) RPCSync(dbMap *gorp.DbMap) error {
 		return err
 	}
 
-	err = walletSvrsSync(controller.rpcServers, controller.StakepooldServers, multisigScripts)
+	err = controller.StakepooldServers.SyncAll(multisigScripts, MaxUsers)
 	return err
 }
 
@@ -804,7 +865,7 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return "/error", http.StatusSeeOther
 	}
 
-	// Create the the multisig script. Result includes a P2SH and RedeemScript.
+	// Create the the multisig script. Result includes a P2SH and redeem script.
 	if controller.RPCIsStopped() {
 		return "/error", http.StatusSeeOther
 	}
@@ -814,14 +875,14 @@ func (controller *MainController) AddressPost(c web.C, r *http.Request) (string,
 		return "/error", http.StatusSeeOther
 	}
 
-	// Serialize the RedeemScript (hex string -> []byte)
+	// Serialize the redeem script (hex string -> []byte)
 	serializedScript, err := hex.DecodeString(createMultiSig.RedeemScript)
 	if err != nil {
 		controller.handlePotentialFatalError("CreateMultisig DecodeString", err)
 		return "/error", http.StatusSeeOther
 	}
 
-	// Import the RedeemScript
+	// Import the redeem script
 	var importedHeight int64
 	importedHeight, err = controller.StakepooldServers.ImportScript(serializedScript)
 	if err != nil {
@@ -857,75 +918,7 @@ func (controller *MainController) AdminStatus(c web.C, r *http.Request) (string,
 		return "", http.StatusUnauthorized
 	}
 
-	type stakepooldInfoPage struct {
-		RPCStatus string
-	}
-
-	stakepooldRPCStatus := controller.StakepooldServers.RPCStatus()
-
-	stakepooldPageInfo := make([]stakepooldInfoPage, len(stakepooldRPCStatus))
-
-	for i, grpcStatus := range stakepooldRPCStatus {
-		stakepooldPageInfo[i] = stakepooldInfoPage{
-			RPCStatus: grpcStatus,
-		}
-	}
-
-	// Attempt to query wallet statuses
-	walletInfo, err := controller.StakepooldServers.WalletInfo()
-	if err != nil {
-		log.Errorf("Failed to execute WalletStatus: %v", err)
-		return "/error", http.StatusSeeOther
-	}
-
-	type WalletInfoPage struct {
-		Connected       bool
-		DaemonConnected bool
-		Unlocked        bool
-		EnableVoting    bool
-	}
-	walletPageInfo := make([]WalletInfoPage, len(walletInfo))
-	var connectedWallets int
-	for i, v := range walletInfo {
-		// If something is nil in the slice means it is disconnected.
-		if v == nil {
-			walletPageInfo[i] = WalletInfoPage{
-				Connected: false,
-			}
-			controller.rpcServers.DisconnectWalletRPC(i)
-			err = controller.rpcServers.ReconnectWalletRPC(i)
-			if err != nil {
-				log.Infof("wallet rpc reconnect failed: server %v %v", i, err)
-			}
-			continue
-		}
-		// Wallet has been successfully queried.
-		connectedWallets++
-		walletPageInfo[i] = WalletInfoPage{
-			Connected:       true,
-			DaemonConnected: v.DaemonConnected,
-			EnableVoting:    v.Voting,
-			Unlocked:        v.Unlocked,
-		}
-	}
-
-	// Depending on how many wallets have been detected update RPCStatus.
-	// Admins can then use to monitor this page periodically and check status.
-	var rpcstatus string
-	allWallets := len(walletInfo)
-
-	if connectedWallets == allWallets {
-		rpcstatus = "OK"
-	} else {
-		switch connectedWallets {
-		case 0:
-			rpcstatus = "Emergency"
-		case 1:
-			rpcstatus = "Critical"
-		default:
-			rpcstatus = "Degraded"
-		}
-	}
+	backendStatus := controller.StakepooldServers.BackendStatus()
 
 	t := controller.GetTemplate(c)
 	c.Env["Admin"] = isAdmin
@@ -933,18 +926,12 @@ func (controller *MainController) AdminStatus(c web.C, r *http.Request) (string,
 	c.Env["Title"] = "Decred Voting Service - Status (Admin)"
 
 	// Set info to be used by admins on /status page.
-	c.Env["StakepooldInfo"] = stakepooldPageInfo
-	c.Env["WalletInfo"] = walletPageInfo
-	c.Env["RPCStatus"] = rpcstatus
+	c.Env["BackendStatus"] = backendStatus
 
 	widgets := controller.Parse(t, "admin/status", c.Env)
 	c.Env["Designation"] = controller.designation
 
 	c.Env["Content"] = template.HTML(widgets)
-
-	if controller.RPCIsStopped() {
-		return controller.Parse(t, "main", c.Env), http.StatusInternalServerError
-	}
 
 	return controller.Parse(t, "main", c.Env), http.StatusOK
 }
@@ -2104,31 +2091,6 @@ func (controller *MainController) Voting(c web.C, r *http.Request) (string, int)
 
 	t := controller.GetTemplate(c)
 
-	// agenda links an agenda to its status. Possible statuses are upcoming,
-	// in progress, finished, failed, or locked in.
-	type agenda struct {
-		Agenda chaincfg.ConsensusDeployment
-		Status string
-	}
-	url := fmt.Sprintf("https://%s.dcrdata.org/api/agendas", controller.getNetworkName())
-	agendaInfos, err := dcrDataAgendas(url)
-	if err != nil {
-		log.Warnf("unable to retrieve data from %v: %v", url, err)
-	}
-	agendaArray := controller.getAgendas()
-	agendas := make([]agenda, len(agendaArray))
-	// populate agendas
-	for n, agenda := range agendaArray {
-		agendas[n].Agenda = agenda
-		// find status for id
-		for _, info := range agendaInfos {
-			if info.Name == agenda.Vote.Id {
-				agendas[n].Status = info.Status.String()
-				break
-			}
-		}
-	}
-
 	choicesSelected := controller.choicesForAgendas(uint16(user.VoteBits))
 
 	for k, v := range choicesSelected {
@@ -2136,7 +2098,7 @@ func (controller *MainController) Voting(c web.C, r *http.Request) (string, int)
 		c.Env["Agenda"+strk+"Selected"] = v
 	}
 	c.Env["Admin"], _ = controller.isAdmin(c, r)
-	c.Env["Agendas"] = agendas
+	c.Env["Agendas"] = controller.agendas()
 	c.Env["FlashError"] = session.Flashes("votingError")
 	c.Env["FlashSuccess"] = session.Flashes("votingSuccess")
 	c.Env["IsVoting"] = true

@@ -14,10 +14,40 @@ vote on their behalf when the ticket is selected.
 
 ![Voting Service Architecture](https://i.imgur.com/2JDA9dl.png)
 
-- It is highly recommended to use 3 dcrd+dcrwallet+stakepoold nodes for
+- It is highly recommended to use at least 2 dcrd+dcrwallet+stakepoold nodes for
   production use on mainnet.
+  Can use 1 dcrd+dcrwallet+stakepoold node (backend server) on testnet.
 - The architecture is subject to change in the future to lessen the dependence
   on dcrwallet and MySQL.
+
+## Test Harness
+
+A test harness is provided in `./harness.sh`. The test harness uses tmux to start
+a dcrd node, multiple dcrwallet and stakepoold instances, and finally a dcrstakepool
+instance. It uses hard-coded wallet seeds and pubkeys, and as a result it is only
+suitable for use on testnet. To use the harness:
+
+```bash
+./harness.sh
+```
+
+While the web interface should become available almost immediately, it will take a
+short while for dcrstakepool to become fully functional because the wallets need to
+sync and complete a re-scan before they can be used.
+
+The harness makes a few assumptions
+
+- tmux is installed
+- dcrd, dcrwallet, stakepoold and dcrstakepool are available on $PATH
+- testnet blockchain is already downloaded and sync'd
+- MySQL is configured at 127.0.0.1:3306
+- Database `stakepool` and user `stakepool` with password `password` exist
+- The following files exist:
+  - `${HOME}/.dcrd/rpc.cert`
+  - `${HOME}/.dcrd/rpc.key`
+  - `${HOME}/.dcrwallet/rpc.cert`
+  - `${HOME}/.dcrwallet/rpc.key`
+  - `${HOME}/.stakepoold/rpc.cert`
 
 ## Git Tip Release notes
 
@@ -95,7 +125,7 @@ vote on their behalf when the ticket is selected.
 
 ## Requirements
 
-- [Go](http://golang.org) 1.10.5 or newer (1.11 is recommended).
+- [Go](http://golang.org) 1.11.13 or newer (1.12 is recommended).
 - MySQL
 - Nginx or other web server to proxy to dcrstakepool
 
@@ -110,14 +140,9 @@ Building or updating from source requires only an installation of Go
 Clone the dcrstakepool repository into any folder and follow the instructions
 below for your version of Go.
 
-#### Building with Go 1.11
+#### Building with Go 1.12
 
-Go 1.11 introduced native support for
-[modules](https://github.com/golang/go/wiki/Modules), a new dependency
-management approach, that obviates the need for third party tooling such as
-`dep`.
-
-Usage is simple, and nothing is required except Go 1.11. If building in a folder
+If building in a folder
 under `GOPATH`, it is necessary to explicitly build with modules enabled:
 
     GO111MODULE=on go build
@@ -129,14 +154,6 @@ The `go` tool will process the source code and automatically download
 dependencies. If the dependencies are configured correctly, there will be no
 modifications to the `go.mod` and `go.sum` files.
 
-#### Building with Go 1.10
-
-Module-enabled builds with Go 1.10 require the
-[vgo](https://github.com/golang/vgo) command. Follow the same procedures as if
-you were [using Go 1.11](#building-with-go-111), but replacing `go` with `vgo`.
-
-**NOTE:** The `dep` tool is no longer supported. If you must use Go 1.10,
-install and use `vgo`. If possible, upgrade to Go 1.11.
 
 ### Components
 
