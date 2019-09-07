@@ -31,6 +31,7 @@ import (
 	wallettypes "github.com/decred/dcrwallet/rpc/jsonrpc/types"
 	"github.com/decred/dcrwallet/wallet/v2/udb"
 	"github.com/go-gorp/gorp"
+	"github.com/gorilla/csrf"
 	"github.com/zenazn/goji/web"
 
 	"google.golang.org/grpc"
@@ -451,6 +452,7 @@ func (controller *MainController) APIVoting(c web.C, r *http.Request) ([]string,
 func (controller *MainController) isAdmin(c web.C, r *http.Request) (bool, error) {
 	remoteIP := getClientIP(r, controller.realIPHeader)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 
 	if session.Values["UserId"] == nil {
 		return false, fmt.Errorf("%s request with no session from %s",
@@ -755,6 +757,7 @@ func (controller *MainController) handlePotentialFatalError(fn string, err error
 func (controller *MainController) Address(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 
 	if session.Values["UserId"] == nil {
 		return "/", http.StatusSeeOther
@@ -776,6 +779,7 @@ func (controller *MainController) Address(c web.C, r *http.Request) (string, int
 // AddressPost is address form submit route.
 func (controller *MainController) AddressPost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if session.Values["UserId"] == nil {
@@ -1020,6 +1024,7 @@ func (controller *MainController) AdminStatus(c web.C, r *http.Request) (string,
 func (controller *MainController) AdminTickets(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	isAdmin, err := controller.isAdmin(c, r)
@@ -1057,6 +1062,7 @@ func (controller *MainController) AdminTickets(c web.C, r *http.Request) (string
 // AdminTicketsPost validates and processes the form posted from AdminTickets.
 func (controller *MainController) AdminTicketsPost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
@@ -1181,6 +1187,7 @@ func (controller *MainController) AdminTicketsPost(c web.C, r *http.Request) (st
 func (controller *MainController) EmailUpdate(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	render := func() string {
@@ -1252,6 +1259,7 @@ func (controller *MainController) EmailUpdate(c web.C, r *http.Request) (string,
 func (controller *MainController) EmailVerify(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	render := func() string {
@@ -1376,6 +1384,7 @@ func (controller *MainController) Docs(c web.C, r *http.Request) (string, int) {
 func (controller *MainController) PasswordReset(c web.C, r *http.Request) (string, int) {
 	c.Env["Title"] = "Decred Voting Service - Password Reset"
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	c.Env["FlashError"] = append(session.Flashes("passwordresetError"), session.Flashes("captchaFailed")...)
 	c.Env["FlashSuccess"] = session.Flashes("passwordresetSuccess")
 	c.Env["IsPasswordReset"] = true
@@ -1396,6 +1405,7 @@ func (controller *MainController) PasswordReset(c web.C, r *http.Request) (strin
 func (controller *MainController) PasswordResetPost(c web.C, r *http.Request) (string, int) {
 	email := r.FormValue("email")
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	if !controller.IsCaptchaDone(c) {
@@ -1452,6 +1462,7 @@ func (controller *MainController) PasswordResetPost(c web.C, r *http.Request) (s
 func (controller *MainController) PasswordUpdate(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 
 	render := func() string {
 		c.Env["Title"] = "Decred Voting Service - Password Update"
@@ -1478,6 +1489,7 @@ func (controller *MainController) PasswordUpdate(c web.C, r *http.Request) (stri
 // the password reset email. The token is validated and the password is changed.
 func (controller *MainController) PasswordUpdatePost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
@@ -1534,6 +1546,7 @@ func (controller *MainController) PasswordUpdatePost(c web.C, r *http.Request) (
 // Settings renders the settings page.
 func (controller *MainController) Settings(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	if session.Values["UserId"] == nil {
@@ -1582,6 +1595,7 @@ func (controller *MainController) Settings(c web.C, r *http.Request) (string, in
 // SettingsPost handles changing the user's email address or password.
 func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
@@ -1724,6 +1738,7 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 func (controller *MainController) SignIn(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 
 	// Tell main.html what route is being rendered
 	c.Env["IsSignIn"] = true
@@ -1743,6 +1758,7 @@ func (controller *MainController) SignInPost(c web.C, r *http.Request) (string, 
 	email, password := r.FormValue("email"), r.FormValue("password")
 
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
@@ -1784,6 +1800,7 @@ func (controller *MainController) SignUp(c web.C, r *http.Request) (string, int)
 	}
 
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	c.Env["FlashError"] = append(session.Flashes("signupError"), session.Flashes("captchaFailed")...)
 	c.Env["FlashSuccess"] = session.Flashes("signupSuccess")
 	c.Env["CaptchaID"] = captcha.New()
@@ -1805,6 +1822,7 @@ func (controller *MainController) SignUpPost(c web.C, r *http.Request) (string, 
 	}
 
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	if !controller.IsCaptchaDone(c) {
 		session.AddFlash("You must complete the captcha.", "signupError")
 		return controller.SignUp(c, r)
@@ -1967,6 +1985,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 
 	t := controller.GetTemplate(c)
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	remoteIP := getClientIP(r, controller.realIPHeader)
 
 	if session.Values["UserId"] == nil {
@@ -2095,6 +2114,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 // Voting renders the voting page.
 func (controller *MainController) Voting(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	if session.Values["UserId"] == nil {
@@ -2128,6 +2148,7 @@ func (controller *MainController) Voting(c web.C, r *http.Request) (string, int)
 // VotingPost form submit route.
 func (controller *MainController) VotingPost(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 	dbMap := controller.GetDbMap(c)
 
 	if session.Values["UserId"] == nil {
@@ -2181,6 +2202,7 @@ func (controller *MainController) VotingPost(c web.C, r *http.Request) (string, 
 // Logout the user.
 func (controller *MainController) Logout(c web.C, r *http.Request) (string, int) {
 	session := controller.GetSession(c)
+	c.Env[csrf.TemplateTag] = csrf.TemplateField(r)
 
 	session.Values["UserId"] = nil
 
