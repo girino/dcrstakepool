@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/dcrjson/v2"
-	"github.com/decred/dcrd/dcrutil"
 	"github.com/decred/dcrd/rpcclient/v3"
 	"github.com/decred/dcrstakepool/models"
 	"github.com/decred/dcrstakepool/stakepooldclient"
@@ -23,8 +21,7 @@ import (
 type functionName int
 
 const (
-	createMultisigFn functionName = iota
-	getStakeInfoFn
+	getStakeInfoFn functionName = iota
 	connectedFn
 	getBestBlockFn
 )
@@ -35,28 +32,10 @@ var (
 	// of returning cached stake information.
 	cacheTimerStakeInfo = 5 * time.Minute
 
-	// cacheTimerGetTickets is the duration of time after which to
-	// access the wallet and update the ticket list for an address
-	// instead of returning cached ticket information.
-	cacheTimerGetTickets = 20 * time.Second
-
 	// defaultAccountName is the account name for the default wallet
 	// account as a string.
 	defaultAccountName = "default"
 )
-
-// createMultisigResponse
-type createMultisigResponse struct {
-	multisigInfo *wallettypes.CreateMultiSigResult
-	err          error
-}
-
-// createMultisigMsg
-type createMultisigMsg struct {
-	required  int
-	addresses []dcrutil.Address
-	reply     chan createMultisigResponse
-}
 
 // getStakeInfoResponse
 type getStakeInfoResponse struct {
@@ -104,10 +83,6 @@ out:
 		select {
 		case m := <-w.msgChan:
 			switch msg := m.(type) {
-			case createMultisigMsg:
-				resp := w.executeInSequence(createMultisigFn, msg)
-				respTyped := resp.(*createMultisigResponse)
-				msg.reply <- *respTyped
 			case getStakeInfoMsg:
 				resp := w.executeInSequence(getStakeInfoFn, msg)
 				respTyped := resp.(*getStakeInfoResponse)
@@ -137,59 +112,6 @@ out:
 // executeInSequence is the mainhandler of all the incoming client functions.
 func (w *walletSvrManager) executeInSequence(fn functionName, msg interface{}) interface{} {
 	switch fn {
-	case createMultisigFn:
-		cmsm := msg.(createMultisigMsg)
-		resp := new(createMultisigResponse)
-		cmsrs := make([]*wallettypes.CreateMultiSigResult, w.serversLen)
-		var connectCount int
-		for i, s := range w.servers {
-			if w.servers[i] == nil {
-				continue
-			}
-			cmsr, err := s.CreateMultisig(cmsm.required, cmsm.addresses)
-			if err != nil && (err != rpcclient.ErrClientDisconnect &&
-				err != rpcclient.ErrClientShutdown) {
-				log.Infof("createMultisigFn failure on server %v: %v", i, err)
-				resp.err = err
-				return resp
-			} else if err != nil && (err == rpcclient.ErrClientDisconnect ||
-				err == rpcclient.ErrClientShutdown) {
-				cmsrs[i] = nil
-				continue
-			}
-			connectCount++
-			cmsrs[i] = cmsr
-		}
-
-		if connectCount < w.minServers {
-			log.Errorf("Unable to check any servers for createMultisigFn")
-			resp.err = fmt.Errorf("not processing command; %v servers avail is below min of %v", connectCount, w.minServers)
-			return resp
-		}
-
-		for i := 0; i < w.serversLen; i++ {
-			if i == w.serversLen-1 {
-				break
-			}
-			if cmsrs[i] == nil || cmsrs[i+1] == nil {
-				continue
-			}
-			if cmsrs[i].RedeemScript != cmsrs[i+1].RedeemScript {
-				log.Infof("createMultisigFn nonequiv failure on servers "+
-					"%v, %v (%v != %v)", i, i+1, cmsrs[i].RedeemScript, cmsrs[i+1].RedeemScript)
-				resp.err = fmt.Errorf("non equivalent redeem script returned")
-				return resp
-			}
-		}
-
-		for i := range cmsrs {
-			if cmsrs[i] != nil {
-				resp.multisigInfo = cmsrs[i]
-				break
-			}
-		}
-		return resp
-
 	case getStakeInfoFn:
 		resp := new(getStakeInfoResponse)
 		gsirs := make([]*wallettypes.GetStakeInfoResult, w.serversLen)
@@ -339,27 +261,6 @@ func (w *walletSvrManager) connected() ([]*wallettypes.WalletInfoResult, error) 
 	return response.walletInfo, response.err
 }
 
-// CreateMultisig
-//
-// This should return equivalent results from all wallet RPCs. If this
-// encounters a failure, it should be considered fatal.
-func (w *walletSvrManager) CreateMultisig(nreq int, addrs []dcrutil.Address) (*wallettypes.CreateMultiSigResult, error) {
-	// Assert that all servers are online.
-	_, err := w.connected()
-	if err != nil {
-		return nil, connectionError(err)
-	}
-
-	reply := make(chan createMultisigResponse)
-	w.msgChan <- createMultisigMsg{
-		required:  nreq,
-		addresses: addrs,
-		reply:     reply,
-	}
-	response := <-reply
-	return response.multisigInfo, response.err
-}
-
 // GetBestBlock gets the current best block according the first wallet asked.
 func (w *walletSvrManager) GetBestBlock() (*chainhash.Hash, int64, error) {
 	reply := make(chan getBestBlockResponse)
@@ -415,19 +316,6 @@ func (w *walletSvrManager) GetStakeInfo() (*wallettypes.GetStakeInfoResult, erro
 	return w.getStakeInfo()
 }
 
-// getTicketsCacheData is a TicketsForAddressResult that also contains a time
-// at which TicketsForAddress was last called. The results should only update.
-type getTicketsCacheData struct {
-	res   *dcrjson.TicketsForAddressResult
-	timer time.Time
-}
-
-// NewGetTicketsCacheData is a contructor for getTicketsCacheData that sets the
-// last get time to now.
-func NewGetTicketsCacheData(tfar *dcrjson.TicketsForAddressResult) *getTicketsCacheData {
-	return &getTicketsCacheData{tfar, time.Now()}
-}
-
 // walletSvrManager provides a concurrency safe RPC call manager for handling
 // all incoming wallet server requests.
 type walletSvrManager struct {
@@ -450,12 +338,6 @@ type walletSvrManager struct {
 	cachedStakeInfo      *wallettypes.GetStakeInfoResult
 	cachedStakeInfoTimer time.Time
 	cachedStakeInfoMutex sync.Mutex
-
-	// cachedGetTicketsMap caches TicketsForAddress responses and
-	// is used to only provide new calls to the wallet RPC after a
-	// cooldown period to prevent DoS attacks.
-	cachedGetTicketsMap   map[string]*getTicketsCacheData
-	cachedGetTicketsMutex sync.Mutex
 
 	// minServers is the minimum number of servers required before alerting
 	minServers int
@@ -530,15 +412,11 @@ func (w *walletSvrManager) CheckWalletsReady() error {
 	for i, s := range w.servers {
 		_, err := s.GetStakeInfo()
 		if err != nil {
-			log.Errorf("GetStakeInfo failured on server %v: %v", i, err)
+			log.Errorf("GetStakeInfo failed on server %v: %v", i, err)
 			return err
 		}
 	}
 	return nil
-}
-
-func (w *walletSvrManager) WalletStatus() ([]*wallettypes.WalletInfoResult, error) {
-	return w.connected()
 }
 
 // checkIfWalletConnected checks to see if the passed wallet's client is connected
@@ -662,7 +540,6 @@ func newWalletSvrManager(walletHosts []string, walletCerts []string,
 		servers:              localServers,
 		serversLen:           len(localServers),
 		cachedStakeInfoTimer: time.Now().Add(-cacheTimerStakeInfo),
-		cachedGetTicketsMap:  make(map[string]*getTicketsCacheData),
 		msgChan:              make(chan interface{}, 500),
 		quit:                 make(chan struct{}),
 		minServers:           minServers,
