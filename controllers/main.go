@@ -100,29 +100,11 @@ func getClientIP(r *http.Request, realIPHeader string) string {
 func NewMainController(params *chaincfg.Params, adminIPs []string,
 	adminUserIDs []string, APISecret string, APIVersionsSupported []int,
 	baseURL string, closePool bool, closePoolMsg string, enablestakepoold bool,
-	feeXpubStr string, stakepooldConnMan *stakepooldclient.StakepooldManager, poolFees float64,
-	poolEmail, poolLink string, emailSender email.Sender, walletHosts, walletCerts, walletUsers,
-	walletPasswords []string, minServers int, realIPHeader,
-	votingXpubStr string, maxVotedAge int64, description string,
+	feeKey *hdkeychain.ExtendedKey, stakepooldConnMan *stakepooldclient.StakepooldManager,
+	poolFees float64, poolEmail, poolLink string, emailSender email.Sender, walletHosts,
+	walletCerts, walletUsers, walletPasswords []string, minServers int, realIPHeader string,
+	voteKey *hdkeychain.ExtendedKey, maxVotedAge int64, description string,
 	designation string) (*MainController, error) {
-
-	// Parse the extended public key and the pool fees.
-	feeKey, err := hdkeychain.NewKeyFromString(feeXpubStr)
-	if err != nil {
-		return nil, err
-	}
-	if !feeKey.IsForNet(params) {
-		return nil, fmt.Errorf("fee extended public key is for wrong network")
-	}
-
-	// Parse the extended public key for the voting addresses.
-	voteKey, err := hdkeychain.NewKeyFromString(votingXpubStr)
-	if err != nil {
-		return nil, err
-	}
-	if !voteKey.IsForNet(params) {
-		return nil, fmt.Errorf("voting extended public key is for wrong network")
-	}
 
 	rpcs, err := newWalletSvrManager(walletHosts, walletCerts, walletUsers, walletPasswords, minServers)
 	if err != nil {
@@ -1266,7 +1248,6 @@ func (controller *MainController) Error(c web.C, r *http.Request) (string, int) 
 	c.Env["Title"] = "Decred VSP - Error"
 	c.Env["RPCStatus"] = rpcstatus
 	c.Env["RateLimited"] = r.URL.Query().Get("rl")
-	c.Env["Referer"] = r.URL.Query().Get("r")
 
 	widgets := controller.Parse(t, "error", c.Env)
 	c.Env["Designation"] = controller.designation
@@ -1984,7 +1965,7 @@ func (controller *MainController) Tickets(c web.C, r *http.Request) (string, int
 
 	start := time.Now()
 
-	spui, err := w.StakePoolUserInfo(multisig, true)
+	spui, err := controller.StakepooldServers.StakePoolUserInfo(multisig.String())
 	if err != nil {
 		// Render page with message to try again later
 		log.Infof("RPC StakePoolUserInfo failed: %v", err)
