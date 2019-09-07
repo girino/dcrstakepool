@@ -1,3 +1,7 @@
+// Copyright (c) 2016-2019 The Decred developers
+// Use of this source code is governed by an ISC
+// license that can be found in the LICENSE file.
+
 package models
 
 import (
@@ -5,11 +9,45 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/decred/dcrd/chaincfg/chainhash"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/go-gorp/gorp"
 	_ "github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// HashList represents a slice of hash strings.
+type HashList []string
+
+// DecodeHashList attempts to decode each hash string in the given HashList,
+// returning a non-nil error if any string in the list is not a valid hashes.
+func DecodeHashList(hashList HashList) ([]chainhash.Hash, error) {
+	var hashes []chainhash.Hash
+	for i := range hashList {
+		h, err := chainhash.NewHashFromStr(hashList[i])
+		if err != nil {
+			return nil, err
+		}
+		hashes = append(hashes, *h)
+	}
+	return hashes, nil
+}
+
+// ValidateHashList ensures that all strings in the HashList are valid Decred
+// hashes. If all are valid, the returned error will be nil.
+func ValidateHashList(hashList HashList) error {
+	_, err := DecodeHashList(hashList)
+	return err
+}
+
+// ToStringSlice satisfies gorp's internal "stringer" interface used by
+// expandSliceArgs. It is a trivial conversion since the underlying type of
+// HashList is a []string, but if a HashList is provided to a gorp
+// query/transaction then ToStringSlice must be implemented to obtain the
+// []string type in expandSliceArgs.
+func (hashList HashList) ToStringSlice() []string {
+	return hashList // []string(hashList)
+}
 
 type EmailChange struct {
 	Id       int64 `db:"EmailChangeID"`
@@ -57,11 +95,13 @@ type User struct {
 	VoteBitsVersion  int64
 }
 
+// BEGIN EMAIL NOTIF
 type Notification struct {
 	Id               int64
 	UserId		 int64
 	LastHeight	 int64
 }
+// END EMAIL NOTIF
 
 func (user *User) HashPassword(password string) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -91,6 +131,7 @@ func GetUserById(dbMap *gorp.DbMap, id int64) (user *User, err error) {
 	return user, nil
 }
 
+// BEGIN EMAIL NOTIF
 // Email notifications
 func GetOrInstantiateNotificationByUserId(dbMap *gorp.DbMap, id int64) (n *Notification, err error) {
 	count, err := dbMap.SelectInt("SELECT count(*) FROM Notifications WHERE UserId = ?", id)
@@ -127,6 +168,7 @@ func InsertOrUpdateNotification(dbMap *gorp.DbMap, userId int64, height int64) e
         }
 	return err
 }
+// END EMAIL NOTIF
 
 // GetUserCount gives a count of all users
 func GetUserCount(dbMap *gorp.DbMap) int64 {
@@ -263,43 +305,47 @@ func GetVotableLowFeeTickets(dbMap *gorp.DbMap) ([]LowFeeTicket, error) {
 }
 
 func GetDbMap(APISecret, baseURL, user, password, hostname, port, database string) *gorp.DbMap {
-	// connect to db using standard Go database/sql API
-	// use whatever database/sql driver you wish
-	db, err := sql.Open("mysql", fmt.Sprint(user, ":", password, "@(", hostname, ":", port, ")/", database, "?charset=utf8mb4"))
+	// Connect to db using standard Go database/sql API.
+	dataSource := fmt.Sprintf("%s:%s@(%s:%s)/%s?charset=utf8mb4",
+		user, password, hostname, port, database)
+	db, err := sql.Open("mysql", dataSource)
 	if err != nil {
 		log.Critical("sql.Open failed: ", err)
 		return nil
 	}
 
-	// sql.Open just validates its arguments without creating a connection
-	// Verify that the data source name is valid with Ping:
+	// sql.Open just validates its arguments without creating a connection, so
+	// verify that the data source name is valid with Ping.
 	if err = db.Ping(); err != nil {
 		log.Critical("Unable to establish connection to database: ", err)
 		return nil
 	}
 
-	// construct a gorp DbMap
-	dbMap := &gorp.DbMap{Db: db, Dialect: gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8MB4"}}
+	// Construct a gorp DbMap.
+	dbMap := &gorp.DbMap{
+		Db:              db,
+		Dialect:         gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8MB4"},
+		ExpandSliceArgs: true,
+	}
 
-	// add a table, setting the table name and specifying that
-	// the Id property is an auto incrementing primary key
+	// Add a table, setting the table name and specifying that the Id property
+	// is an auto incrementing primary key
 	dbMap.AddTableWithName(EmailChange{}, "EmailChange").SetKeys(true, "Id")
 	dbMap.AddTableWithName(LowFeeTicket{}, "LowFeeTicket").SetKeys(true, "Id")
 	dbMap.AddTableWithName(PasswordReset{}, "PasswordReset").SetKeys(true, "Id")
 	usersTableName := "Users"
 	dbMap.AddTableWithName(User{}, usersTableName).SetKeys(true, "Id")
 
+	// BEGIN EMAIL NOTIF
 	// added notifications table
 	dbMap.AddTableWithName(Notification{}, "Notifications").SetKeys(true, "Id").ColMap("UserId").SetUnique(true).SetNotNull(true);
-
-	// create the table. in a production system you'd generally
-	// use a migration tool, or create the tables via scripts
+	// END EMAIL NOTIF
+	// Create the table.
 	err = dbMap.CreateTablesIfNotExists()
 	if err != nil {
 		log.Critical("Create tables failed: ", err)
-		// There is no point proceeding, so return. TODO: signal to caller the
-		// error, or possibly close the db, or panic.
-		return dbMap
+		// There is no point proceeding, so return with nil.
+		return nil
 	}
 
 	// The ORM, Gorp, doesn't support migrations so we just add new columns
