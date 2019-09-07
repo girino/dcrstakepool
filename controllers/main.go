@@ -1225,10 +1225,11 @@ func (controller *MainController) Index(c web.C, r *http.Request) (string, int) 
 // BEGIN DOCS PAGE
 // Docs renders the docs page.
 func (controller *MainController) Docs(c web.C, r *http.Request) (string, int) {
-	c.Env["Network"] = controller.params.Name
-	c.Env["PoolEmail"] = controller.poolEmail
-	c.Env["PoolFees"] = controller.poolFees
-	c.Env["PoolLink"] = controller.poolLink
+	c.Env["Network"] = controller.Cfg.NetParams.Name
+	c.Env["PoolEmail"] = controller.Cfg.PoolEmail
+	c.Env["PoolFees"] = controller.Cfg.PoolFees
+	c.Env["CustomDescription"] = controller.Cfg.Description
+	c.Env["PoolLink"] = controller.Cfg.PoolLink
 
 	t := controller.GetTemplate(c)
 
@@ -1475,7 +1476,7 @@ func (controller *MainController) SettingsPost(c web.C, r *http.Request) (string
 		if isEmailNotify != wasEmailnotify {
 			log.Infof("Email notification changed. Updating. %v", session.Values["UserId"])
 			if isEmailNotify {
-				gsi, err := controller.StakepooldServers.GetStakeInfo()
+				gsi, err := controller.Cfg.StakepooldServers.GetStakeInfo()
 				if err != nil {
 					log.Infof("RPC GetStakeInfo failed: %v", err)
 					session.AddFlash("Unable to change preferences, RPC GetStakeInfo failed", "settingsError")
