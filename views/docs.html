@@ -1,28 +1,62 @@
 {{define "docs"}}
-<div class="wrapper">
-    <div class="row main-row">
-    <div class="col-xs-15 col-md-8 col-lg-8 notication-col center-block">
+<section class="site-content">
+    <div class="container container--narrow">
+        <div class="row mx-3">
+            <section class="block">
+                <div class="col-12 block__title">
+                    <h1><span>Documentation and Tutorials</span></h1>
+                </div>
+        <div class="col-12 mb-4 block__content">
+          <div class="row mb-3">
+            <div class="col-12">
+             <h2>Videos</h2>
+            </div>
+            <div class="col-12">
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                              <p class="mb-0 text--size-13"><a href="https://youtu.be/TiZLeThEta0">Wallet setup and ticket buying</a> in Portuguese (thanks Epaminondas Channel)</p>
+                          </div>
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                <p class="mb-0 text--size-13"><a href="https://youtu.be/3RGoUQK0g24">Split Tickets Tutorial</a> in Portuguese with English subtitles</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 mb-4 block__content">
+          <div class="row mb-3">
+            <div class="col-12">
+              <h2>Split Tickets Tutorial (by rramires)</h2>
+            </div>
+            <div class="col-12">
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                <p class="mb-0 text--size-13">English Version (<a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets+en_us+v002.docx">docx</a> | <a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets+en_us+v002.pdf">pdf</a>)</p>
+                          </div>
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                <p class="mb-0 text--size-13">Versão Brasileira (<a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets_v002.docx">docx</a> | <a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets_v002.pdf">pdf</a>)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 mb-4 block__content">
+          <div class="row mb-3">
+            <div class="col-12">
+              <h2>Support Channels</h2>
+            </div>
+            <div class="col-12">
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                <p class="mb-0 text--size-13">Slack: <a href="https://decredbrasil.slack.com">https://decredbrasil.slack.com</a> (<a href="https://join.slack.com/t/decredbrasil/shared_invite/enQtNDAxNjQ0MjM3MDEyLWM2YmMyNTlkMmJmMmQ3Nzk0MDY3N2RiNjViYmYwMTEyNGI5MTQyMGJhNzc4Yzk5NjNlMTFhOGZkODMzODRkNTI" target="_blank">join here</a>)</p>
+                          </div>
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                <p class="mb-0 text--size-13">Support Email: <a href="mailto:{{.PoolEmail}}">{{.PoolEmail}}</a></p>
+              </div>
+              <div class="d-lg-flex align-items-start align-items-lg-center">
+                <p class="mb-0 text--size-13">Support Link: <a href="{{.PoolLink}}" target="_blank">{{.PoolLink}}</a></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
-    <div class="col-sm-12 col-md-10 col-lg-8 center-block">
-       <h1 class="text-center">Documentation and Tutorials</h1>
-       <ul>
-         <li class="li-heading">Videos</li>
-         <li><a href="https://youtu.be/TiZLeThEta0">Wallet setup and ticket buying</a> in Portuguese (thanks Epaminondas Channel)</li>
-         <li><a href="https://youtu.be/3RGoUQK0g24">Split Tickets Tutorial</a> in Portuguese with English subtitles</li>
-       </ul>
-       <ul>
-         <li class="li-heading">Split Tickets Tutorial (by rramires)</li>
-         <li>English Version (<a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets+en_us+v002.docx">docx</a> | <a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets+en_us+v002.pdf">pdf</a>)</li>
-         <li>Versão Brasileira (<a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets_v002.docx">docx</a> | <a href="https://s3-us-west-2.amazonaws.com/decredbrasil.com.static/Tutorial+Split+Tickets_v002.pdf">pdf</a>)</li>
-       </ul>
-       <ul>
-         <li class="li-heading">Support Channels</li>
-         <li>Slack: <a href="https://decredbrasil.slack.com">https://decredbrasil.slack.com</a> (<a href="https://join.slack.com/t/decredbrasil/shared_invite/enQtNDAxNjQ0MjM3MDEyLWM2YmMyNTlkMmJmMmQ3Nzk0MDY3N2RiNjViYmYwMTEyNGI5MTQyMGJhNzc4Yzk5NjNlMTFhOGZkODMzODRkNTI" target="_blank">join here</a>)</li>
-         <li>Support Email: <a href="mailto:{{.PoolEmail}}">{{.PoolEmail}}</a></li>
-         <li>Support Link: <a href="{{.PoolLink}}" target="_blank">{{.PoolLink}}</a></li>
-       </ul>
- 
-    </div>   
-    </div>
-</div>
+  </div>
+</section>
 {{end}}
+

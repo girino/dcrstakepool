@@ -263,7 +263,7 @@ func runMain() error {
 	html.Post("/voting", application.Route(controller, "VotingPost"))
 
         // Docs routes
-	app.Get("/docs", application.Route(controller, "Docs"))
+	html.Get("/docs", application.Route(controller, "Docs"))
 
 	// KTHXBYE
 	html.Get("/logout", application.Route(controller, "Logout"))
