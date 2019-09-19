@@ -1246,14 +1246,23 @@ func (controller *MainController) Docs(c web.C, r *http.Request) (string, int) {
 	t := controller.GetTemplate(c)
 
 	// execute the named template with data in c.Env
-	widgets := helpers.Parse(t, "docs", c.Env)
+	widgets, err := helpers.Parse(t, "docs", c.Env)
+        if err != nil {
+                log.Errorf("helpers.Parse: docs failed: %v", err)
+                return "/error", http.StatusSeeOther
+        }
 
 	c.Env["Admin"], _ = controller.isAdmin(c, r)
 	c.Env["IsDocs"] = true
 	c.Env["Title"] = "Decred Stake Pool - Docs"
 	c.Env["Content"] = template.HTML(widgets)
 
-	return helpers.Parse(t, "main", c.Env), http.StatusOK
+        doc, err := helpers.Parse(t, "main", c.Env)
+        if err != nil {
+                log.Errorf("helpers.Parse: main failed: %v", err)
+                return "/error", http.StatusSeeOther
+        }
+        return doc, http.StatusOK
 }
 
 // END DOCS PAGE
