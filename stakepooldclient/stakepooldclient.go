@@ -12,15 +12,15 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/dcrutil"
+	"github.com/decred/dcrd/dcrutil/v2"
 	pb "github.com/decred/dcrstakepool/backend/stakepoold/rpc/stakepoolrpc"
+	"github.com/decred/dcrstakepool/helpers"
 	"github.com/decred/dcrstakepool/models"
-	"github.com/decred/dcrwallet/wallet/v2/udb"
 	"golang.org/x/net/context"
 )
 
 var (
-	requiredStakepooldAPI = semver{major: 8, minor: 0, patch: 0}
+	requiredStakepooldAPI = semver{major: 9, minor: 0, patch: 0}
 
 	// cacheTimerStakeInfo is the duration of time after which to
 	// access the wallet and update the stake information instead
@@ -278,7 +278,7 @@ func (s *StakepooldManager) SyncAll(multiSigScripts []models.User, maxUsers int6
 
 	// Set watched address indexes to maxUsers so all generated ticket
 	// addresses show as 'ismine'.
-	err := s.syncWatchedAddresses(defaultAccountName, udb.ExternalBranch, maxUsers)
+	err := s.syncWatchedAddresses(defaultAccountName, helpers.ExternalBranch, maxUsers)
 	if err != nil {
 		return err
 	}
@@ -552,7 +552,7 @@ func (s *StakepooldManager) ValidateAddress(addr dcrutil.Address) (*pb.ValidateA
 	responses := make(map[int]*pb.ValidateAddressResponse)
 
 	req := &pb.ValidateAddressRequest{
-		Address: addr.EncodeAddress(),
+		Address: addr.Address(),
 	}
 
 	// Get ValidateAddress response from all wallets
@@ -696,4 +696,23 @@ func (s *StakepooldManager) GetStakeInfo() (*pb.GetStakeInfoResponse, error) {
 		return resp, nil
 	}
 	return nil, errors.New("GetStakeInfo RPC failed on all stakepoold instances")
+}
+
+// CrossCheckColdWalletExtPubs calls GetColdWalletExtPub RPC on all stakepoold
+// instances and compares the returned `coldwalletextpub` value against the
+// value set in dcrstakepool's config.
+// Returns an error if an RPC call to any of the backend clients errors or
+// if any returned `coldwalletextpub` value is not the same as dcrstakepool's.
+func (s *StakepooldManager) CrossCheckColdWalletExtPubs(dcrstakepoolColdWalletExtPub string) error {
+	for _, conn := range s.grpcConnections {
+		client := pb.NewStakepooldServiceClient(conn)
+		stakepooldResp, err := client.GetColdWalletExtPub(context.Background(), &pb.GetColdWalletExtPubRequest{})
+		if err != nil {
+			return fmt.Errorf("GetColdWalletExtPub RPC failed on stakepoold instance %s: %v", conn.Target(), err)
+		}
+		if stakepooldResp.ColdWalletExtPub != dcrstakepoolColdWalletExtPub {
+			return fmt.Errorf("coldwalletextpub incorrectly configured on stakepoold instance %s", conn.Target())
+		}
+	}
+	return nil
 }

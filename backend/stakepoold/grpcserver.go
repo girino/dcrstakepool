@@ -21,7 +21,8 @@ import (
 	xcontext "golang.org/x/net/context"
 
 	"github.com/decred/dcrd/certgen"
-	"github.com/decred/dcrstakepool/backend/stakepoold/rpc/rpcserver"
+	"github.com/decred/dcrstakepool/backend/stakepoold/rpc/server"
+	"github.com/decred/dcrstakepool/backend/stakepoold/stakepool"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -89,7 +90,7 @@ func interceptUnary(ctx xcontext.Context, req interface{}, info *grpc.UnaryServe
 	peer, peerOk := peer.FromContext(ctx)
 
 	// limit the time we take
-	ctx, cancel := context.WithTimeout(ctx, rpcserver.GRPCCommandTimeout)
+	ctx, cancel := context.WithTimeout(ctx, server.GRPCCommandTimeout)
 	// it is good practice to use the cancellation function even with a timeout
 	defer cancel()
 
@@ -188,9 +189,9 @@ func openRPCKeyPair() (tls.Certificate, error) {
 	return tls.LoadX509KeyPair(cfg.RPCCert, cfg.RPCKey)
 }
 
-func startGRPCServers(appContext *rpcserver.AppContext) (*grpc.Server, error) {
+func startGRPCServers(stakepoold *stakepool.Stakepoold) (*grpc.Server, error) {
 	var (
-		server  *grpc.Server
+		svr     *grpc.Server
 		keyPair tls.Certificate
 		err     error
 	)
@@ -206,24 +207,24 @@ func startGRPCServers(appContext *rpcserver.AppContext) (*grpc.Server, error) {
 		return nil, err
 	}
 	creds := credentials.NewServerTLSFromCert(&keyPair)
-	server = grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(interceptUnary))
-	rpcserver.StartVersionService(server)
-	rpcserver.StartStakepooldService(appContext, server)
+	svr = grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(interceptUnary))
+	server.StartVersionService(svr)
+	server.StartStakepooldService(stakepoold, svr)
 	for _, lis := range listeners {
 		lis := lis
 		go func() {
 			log.Infof("gRPC server listening on %s",
 				lis.Addr())
-			err := server.Serve(lis)
+			err := svr.Serve(lis)
 			log.Tracef("Finished serving gRPC: %v",
 				err)
 		}()
 	}
 
 	// Error when the server can't be started
-	if server == nil {
+	if svr == nil {
 		return nil, errors.New("gRPC service cannot be started")
 	}
 
-	return server, nil
+	return svr, nil
 }

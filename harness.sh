@@ -116,6 +116,7 @@ pass=${WALLET_PASS}
 rpcconnect=${DCRD_RPC_LISTEN}
 grpclisten=127.0.0.1:2010${i}
 rpclisten=${WALLET_RPC_LISTEN}
+stakepoolcoldextkey=${COLD_WALLET_PUB_KEY}:10000
 EOF
 
     echo "Starting dcrwallet-${i}"
@@ -154,6 +155,7 @@ walletpassword=${RPC_PASS}
 testnet=true
 appdata=${NODES_ROOT}/stakepoold-${i}
 rpclisten=${STAKEPOOLD_RPC_LISTEN}
+debuglevel=debug
 EOF
 
     echo "Starting stakepoold-${i}"
@@ -185,6 +187,7 @@ adminips=${DCRSTAKEPOOL_ADMIN_IPS}
 adminuserids=${DCRSTAKEPOOL_ADMIN_IDS}
 stakepooldhosts=${ALL_STAKEPOOLDS}
 stakepooldcerts=${ALL_STAKEPOOLD_RPC_CERTS}
+debuglevel=debug
 EOF
 
 tmux new-window -t $SESSION -n "dcrstakepool"

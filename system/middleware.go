@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/decred/dcrstakepool/models"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-gorp/gorp"
 	"github.com/gorilla/sessions"
 	"github.com/zenazn/goji/web"
+	gojimw "github.com/zenazn/goji/web/middleware"
+	"github.com/zenazn/goji/web/mutil"
 )
 
-// Makes sure templates are stored in the context
+// ApplyTemplates makes sure templates are stored in the context
 func (application *Application) ApplyTemplates(c *web.C, h http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		c.Env["Template"] = application.Template
@@ -21,7 +24,7 @@ func (application *Application) ApplyTemplates(c *web.C, h http.Handler) http.Ha
 	return http.HandlerFunc(fn)
 }
 
-// Makes sure controllers can have access to session
+// ApplySessions makes sure controllers can have access to session
 func (application *Application) ApplySessions(c *web.C, h http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		session, err := application.Store.New(r, "session")
@@ -107,4 +110,32 @@ func (application *Application) ApplyAuth(c *web.C, h http.Handler) http.Handler
 		h.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(fn)
+}
+
+// Logger is a middleware that logs the start and end of each request, along
+// with some useful data about what was requested, what the response status was,
+// and how long it took to return. This should be used after the RequestID
+// middleware.
+func Logger(RealIPHeader string) func(c *web.C, h http.Handler) http.Handler {
+	return func(c *web.C, h http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			reqID := gojimw.GetReqID(*c)
+
+			log.Tracef("[%s] Started %s %q, from %s", reqID, r.Method,
+				r.URL.String(), ClientIP(r, RealIPHeader))
+
+			lw := mutil.WrapWriter(w)
+
+			t1 := time.Now()
+			h.ServeHTTP(lw, r)
+
+			if lw.Status() == 0 {
+				lw.WriteHeader(http.StatusOK)
+			}
+			t2 := time.Now()
+
+			log.Tracef("[%s] Returning %03d in %s", reqID, lw.Status(), t2.Sub(t1))
+		}
+		return http.HandlerFunc(fn)
+	}
 }

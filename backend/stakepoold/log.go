@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/decred/dcrstakepool/backend/stakepoold/rpc/rpcserver"
+	"github.com/decred/dcrstakepool/backend/stakepoold/rpc/server"
+	"github.com/decred/dcrstakepool/backend/stakepoold/stakepool"
 	"github.com/decred/dcrstakepool/backend/stakepoold/userdata"
+	"github.com/decred/dcrstakepool/signal"
 	"github.com/decred/slog"
 	"github.com/jrick/logrotate/rotator"
 )
@@ -42,10 +44,11 @@ var (
 	// application shutdown.
 	logRotator *rotator.Rotator
 
-	clientLog = backendLog.Logger("RPCC")
-	dbLog     = backendLog.Logger("DB")
-	grpcLog   = backendLog.Logger("GRPC")
-	log       = backendLog.Logger("STPK")
+	clientLog    = backendLog.Logger("RPCC")
+	dbLog        = backendLog.Logger("DB")
+	grpcLog      = backendLog.Logger("GRPC")
+	log          = backendLog.Logger("STPK")
+	stakepoolLog = backendLog.Logger("CORE")
 )
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.
@@ -54,12 +57,15 @@ var subsystemLoggers = map[string]slog.Logger{
 	"DB":   dbLog,
 	"GRPC": grpcLog,
 	"STPK": log,
+	"CORE": stakepoolLog,
 }
 
 // Initialize package-global logger variables.
 func init() {
 	userdata.UseLogger(dbLog)
-	rpcserver.UseLogger(grpcLog)
+	server.UseLogger(grpcLog)
+	stakepool.UseLogger(stakepoolLog)
+	signal.UseLogger(log)
 }
 
 // initLogRotator initializes the logging rotater to write logs to logFile and
